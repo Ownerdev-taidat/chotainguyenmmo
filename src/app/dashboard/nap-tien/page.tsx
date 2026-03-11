@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { CreditCard, QrCode, Copy, CheckCircle2, RefreshCw, Clock, AlertTriangle, ArrowRight, Wallet, XCircle, Timer } from 'lucide-react';
+import { CreditCard, QrCode, Copy, CheckCircle2, RefreshCw, AlertTriangle, ArrowRight, Wallet, XCircle, Timer } from 'lucide-react';
 
 const DEPOSIT_AMOUNTS = [50000, 100000, 200000, 500000, 1000000, 2000000];
 const COUNTDOWN_SECONDS = 250;
-const CHECK_INTERVAL_MS = 3000; // 3 seconds
+const CHECK_INTERVAL_MS = 3000;
 
 export default function DepositPage() {
     const { user, updateUser } = useAuth();
@@ -20,7 +20,12 @@ export default function DepositPage() {
     const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const countdownRef = useRef<NodeJS.Timeout | null>(null);
+    const checkingRef = useRef(false);
+    const stepRef = useRef(step);
     const [bankInfo, setBankInfo] = useState({ bank: 'MB Bank', accountNo: '0393959643', accountName: 'NGUYEN TAI DAT' });
+
+    // Keep refs in sync
+    useEffect(() => { stepRef.current = step; }, [step]);
 
     // Load bank info from admin settings
     useEffect(() => {
@@ -47,6 +52,13 @@ export default function DepositPage() {
 
     const selectedAmount = customAmount ? parseInt(customAmount) : amount;
 
+    // Store selected amount in ref so interval can access it
+    const selectedAmountRef = useRef(selectedAmount);
+    useEffect(() => { selectedAmountRef.current = selectedAmount; }, [selectedAmount]);
+
+    const depositCodeRef = useRef(depositCode);
+    useEffect(() => { depositCodeRef.current = depositCode; }, [depositCode]);
+
     const handleProceed = () => {
         if (selectedAmount < 10000) return;
         setStep('transfer');
@@ -59,7 +71,7 @@ export default function DepositPage() {
         setTimeout(() => setCopied(''), 2000);
     };
 
-    const stopAllTimers = useCallback(() => {
+    const stopAllTimers = () => {
         if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
@@ -68,87 +80,90 @@ export default function DepositPage() {
             clearInterval(countdownRef.current);
             countdownRef.current = null;
         }
-    }, []);
+    };
 
-    const checkDeposit = useCallback(async () => {
-        if (checking) return;
+    // The actual check function — uses refs to avoid stale closures
+    const doCheck = async () => {
+        if (checkingRef.current) return;
+        if (stepRef.current !== 'transfer') return;
+
+        checkingRef.current = true;
         setChecking(true);
+
         try {
-            // First try the proper server-side check that updates DB
-            const token = localStorage.getItem('token') || '';
-            const res = await fetch('/api/v1/wallet/deposits/check', {
+            // Use the simple public endpoint — no auth needed
+            const res = await fetch('/api/payment/mbbank/check', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({ depositCode, amount: selectedAmount }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    depositCode: depositCodeRef.current,
+                    amount: selectedAmountRef.current,
+                }),
             });
+
             const data = await res.json();
+            console.log('[Deposit Check]', data);
             setCheckResult(data);
 
             if (data.status === 'found') {
-                // Payment found — update user balance and go to success
-                if (user) {
-                    updateUser({ walletBalance: (user.walletBalance || 0) + selectedAmount });
-                }
-                setStep('success');
+                // Payment found! Stop timers and go to success
                 stopAllTimers();
-            }
-        } catch {
-            // Fallback: try direct mbbank API
-            try {
-                const res = await fetch('/api/payment/mbbank', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ depositCode, amount: selectedAmount }),
-                });
-                const data = await res.json();
-                setCheckResult(data);
-
-                if (data.status === 'found') {
-                    if (user) {
-                        updateUser({ walletBalance: (user.walletBalance || 0) + selectedAmount });
-                    }
-                    setStep('success');
-                    stopAllTimers();
+                if (user) {
+                    updateUser({ walletBalance: (user.walletBalance || 0) + selectedAmountRef.current });
                 }
-            } catch {
-                setCheckResult({ status: 'error', message: 'Lỗi kết nối. Hệ thống sẽ thử lại.' });
-            }
-        }
-        setChecking(false);
-    }, [checking, depositCode, selectedAmount, user, updateUser, stopAllTimers]);
 
-    // Start auto-check (3s) and countdown when in transfer step
+                // Also try to credit wallet in DB (best effort with auth)
+                try {
+                    const token = localStorage.getItem('token') || '';
+                    await fetch('/api/v1/wallet/deposits/check', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                            depositCode: depositCodeRef.current,
+                            amount: selectedAmountRef.current,
+                        }),
+                    });
+                } catch {
+                    // Best effort — client-side balance already updated
+                }
+
+                setStep('success');
+            }
+        } catch (err) {
+            console.error('[Deposit Check Error]', err);
+            setCheckResult({ status: 'error', message: 'Lỗi kết nối. Hệ thống sẽ thử lại.' });
+        }
+
+        checkingRef.current = false;
+        setChecking(false);
+    };
+
+    // Start auto-check and countdown when entering transfer step
     useEffect(() => {
         if (step === 'transfer') {
-            // Start 3s auto-check
-            if (!intervalRef.current) {
-                // Do first check immediately
-                checkDeposit();
-                intervalRef.current = setInterval(checkDeposit, CHECK_INTERVAL_MS);
-            }
+            // First check immediately
+            doCheck();
+
+            // Start interval
+            intervalRef.current = setInterval(doCheck, CHECK_INTERVAL_MS);
 
             // Start countdown
-            if (!countdownRef.current) {
-                countdownRef.current = setInterval(() => {
-                    setCountdown(prev => {
-                        if (prev <= 1) {
-                            // Time expired — auto-cancel
-                            stopAllTimers();
-                            setStep('expired');
-                            return 0;
-                        }
-                        return prev - 1;
-                    });
-                }, 1000);
-            }
+            countdownRef.current = setInterval(() => {
+                setCountdown(prev => {
+                    if (prev <= 1) {
+                        stopAllTimers();
+                        setStep('expired');
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
         }
 
-        return () => {
-            stopAllTimers();
-        };
+        return () => { stopAllTimers(); };
     }, [step]);
 
     const handleCancel = () => {
@@ -158,7 +173,6 @@ export default function DepositPage() {
         setCustomAmount('');
         setCheckResult(null);
         setCountdown(COUNTDOWN_SECONDS);
-        // Generate new deposit code
         const code = 'CTN' + Date.now().toString(36).toUpperCase().slice(-6);
         setDepositCode(code);
     };
@@ -173,7 +187,6 @@ export default function DepositPage() {
         setDepositCode(code);
     };
 
-    // Format countdown
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60);
         const s = seconds % 60;
@@ -253,11 +266,15 @@ export default function DepositPage() {
                                 style={{ width: `${countdownPercent}%` }}
                             />
                         </div>
-                        {checking && (
-                            <div className="flex items-center gap-2 mt-2 text-xs text-brand-primary">
-                                <RefreshCw className="w-3 h-3 animate-spin" /> Đang kiểm tra giao dịch...
-                            </div>
-                        )}
+                        <div className="flex items-center gap-2 mt-2 text-xs">
+                            {checking ? (
+                                <span className="text-brand-primary flex items-center gap-1">
+                                    <RefreshCw className="w-3 h-3 animate-spin" /> Đang kiểm tra giao dịch...
+                                </span>
+                            ) : (
+                                <span className="text-brand-text-muted">Tự động kiểm tra mỗi 3 giây</span>
+                            )}
+                        </div>
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-6">
@@ -325,8 +342,8 @@ export default function DepositPage() {
                     </div>
                     {checkResult?.transaction && (
                         <div className="bg-brand-surface-2 rounded-xl p-3 text-left text-xs space-y-1">
-                            <div className="text-brand-text-muted">Mã GD: <span className="text-brand-text-primary font-medium">{checkResult.transaction.transaction_id || checkResult.transaction.transactionID}</span></div>
-                            <div className="text-brand-text-muted">Thời gian: <span className="text-brand-text-primary font-medium">{checkResult.transaction.transaction_date || checkResult.transaction.transactionDate}</span></div>
+                            <div className="text-brand-text-muted">Mã GD: <span className="text-brand-text-primary font-medium">{checkResult.transaction.transaction_id}</span></div>
+                            <div className="text-brand-text-muted">Thời gian: <span className="text-brand-text-primary font-medium">{checkResult.transaction.transaction_date}</span></div>
                         </div>
                     )}
                     <div className="flex gap-3">
