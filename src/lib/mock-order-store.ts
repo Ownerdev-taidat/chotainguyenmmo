@@ -86,8 +86,8 @@ const DEFAULT_SETTINGS: AdminPlatformSettings = {
     minWithdraw: 500000,
     minDeposit: 10000,
     bankName: 'MB Bank',
-    bankAccount: '0965268536',
-    bankOwner: 'NGUYEN TAI THINH',
+    bankAccount: '0393959643',
+    bankOwner: 'NGUYEN TAI DAT',
     platformTotalEarnings: 0,
 };
 

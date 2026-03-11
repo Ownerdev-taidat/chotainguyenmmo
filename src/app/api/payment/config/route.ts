@@ -9,6 +9,7 @@ export async function GET() {
             apicanhanPass: process.env.MBBANK_PASSWORD || '',
             apicanhanAccount: process.env.MBBANK_ACCOUNT || '',
             accountNo: process.env.MBBANK_ACCOUNT || '',
+            accountOwner: process.env.MBBANK_OWNER_NAME || 'NGUYEN TAI DAT',
             botToken: process.env.TELEGRAM_BOT_TOKEN || '',
             chat_id: process.env.TELEGRAM_CHAT_ID || '',
         };

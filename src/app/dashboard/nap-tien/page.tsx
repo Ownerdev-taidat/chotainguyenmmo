@@ -17,7 +17,7 @@ export default function DepositPage() {
     const [copied, setCopied] = useState('');
     const [autoCheckCount, setAutoCheckCount] = useState(0);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
-    const [bankInfo, setBankInfo] = useState({ bank: 'MB Bank', accountNo: '0965268536', accountName: 'NGUYEN TAI THINH' });
+    const [bankInfo, setBankInfo] = useState({ bank: 'MB Bank', accountNo: '0393959643', accountName: 'NGUYEN TAI DAT' });
 
     // Load bank info from admin settings
     useEffect(() => {
@@ -28,8 +28,8 @@ export default function DepositPage() {
                     const s = d.data.settings;
                     setBankInfo({
                         bank: s.bankName || 'MB Bank',
-                        accountNo: s.bankAccount || '0965268536',
-                        accountName: s.bankOwner || 'NGUYEN TAI THINH',
+                        accountNo: s.bankAccount || '0393959643',
+                        accountName: s.bankOwner || 'NGUYEN TAI DAT',
                     });
                 }
             })

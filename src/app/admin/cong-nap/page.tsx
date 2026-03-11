@@ -21,6 +21,7 @@ const FIELD_META: Record<string, { label: string; icon: any; sensitive: boolean;
     deviceid: { label: 'Device ID', icon: Smartphone, sensitive: false, description: 'ID thiết bị đăng nhập MBBank' },
     user: { label: 'User (MB)', icon: User, sensitive: false, description: 'Username MBBank' },
     accountNo: { label: 'Số tài khoản (MB)', icon: CreditCard, sensitive: false, description: 'Số tài khoản nhận tiền' },
+    accountOwner: { label: 'Chủ tài khoản', icon: User, sensitive: false, description: 'Tên chủ tài khoản MBBank hiển thị trên QR' },
 };
 
 export default function AdminPaymentConfigPage() {
@@ -138,7 +139,7 @@ export default function AdminPaymentConfigPage() {
                         <CreditCard className="w-5 h-5 text-brand-primary" />
                         <div>
                             <div className="text-sm font-semibold text-brand-text-primary">STK: {config.accountNo || '---'}</div>
-                            <div className="text-xs text-brand-text-muted">MBBank — Nguyễn Tài Thịnh</div>
+                            <div className="text-xs text-brand-text-muted">MBBank — {config.accountOwner || 'Chưa cấu hình'}</div>
                         </div>
                     </div>
                 </div>

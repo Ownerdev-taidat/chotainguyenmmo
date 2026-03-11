@@ -33,7 +33,7 @@ export default function AdminSettingsPage() {
     const [settings, setSettings] = useState<Settings>({ kycRequired: false, autoApprove: false, autoApproveWhenKycOff: true });
     const [security, setSecurity] = useState({ emailVerification: true, manualProductApproval: false, withdrawalLimit: true });
     const [general, setGeneral] = useState({ name: 'ChoTaiNguyen', email: 'support@chotainguyen.vn', hotline: '1900 6868', status: 'active' });
-    const [fees, setFees] = useState<PlatformFees>({ commissionRate: '5', withdrawalFee: '15000', minWithdraw: '500000', minDeposit: '10000', bankName: 'MB Bank', bankAccount: '0965268536', bankOwner: 'NGUYEN TAI THINH' });
+    const [fees, setFees] = useState<PlatformFees>({ commissionRate: '5', withdrawalFee: '15000', minWithdraw: '500000', minDeposit: '10000', bankName: 'MB Bank', bankAccount: '0393959643', bankOwner: 'NGUYEN TAI DAT' });
     const [stats, setStats] = useState<PlatformStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState('');
@@ -251,7 +251,7 @@ export default function AdminSettingsPage() {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-brand-text-primary mb-2">Chủ tài khoản</label>
-                        <input type="text" value={fees.bankOwner} onChange={e => setFees({ ...fees, bankOwner: e.target.value })} className="input-field" placeholder="NGUYEN TAI THINH" />
+                        <input type="text" value={fees.bankOwner} onChange={e => setFees({ ...fees, bankOwner: e.target.value })} className="input-field" placeholder="NGUYEN TAI DAT" />
                     </div>
                 </div>
             </div>
