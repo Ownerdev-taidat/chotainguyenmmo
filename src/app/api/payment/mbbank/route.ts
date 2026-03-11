@@ -1,27 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 
-const CONFIG_PATH = path.join(process.cwd(), 'MY_BOT', 'MY_BOT', 'mbbank-main', 'config', 'config.json');
-
+// Read MBBank config from environment variables (Railway)
 function getConfig() {
-    try {
-        const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
-        return JSON.parse(raw);
-    } catch {
+    const apicanhanKey = process.env.MBBANK_API_KEY || '';
+    const apicanhanUser = process.env.MBBANK_USERNAME || '';
+    const apicanhanPass = process.env.MBBANK_PASSWORD || '';
+    const apicanhanAccount = process.env.MBBANK_ACCOUNT || '';
+    const botToken = process.env.TELEGRAM_BOT_TOKEN || '';
+    const chatId = process.env.TELEGRAM_CHAT_ID || '';
+
+    if (!apicanhanKey || !apicanhanUser) {
         return null;
     }
+
+    return {
+        apicanhanKey,
+        apicanhanUser,
+        apicanhanPass,
+        apicanhanAccount,
+        accountNo: apicanhanAccount,
+        botToken,
+        chat_id: chatId,
+    };
 }
 
 // GET: Fetch latest transactions from MBBank via apicanhan
 export async function GET() {
     const config = getConfig();
     if (!config) {
-        return NextResponse.json({ error: 'MBBank config not found' }, { status: 500 });
+        return NextResponse.json({ 
+            error: 'MBBank config not found. Please set MBBANK_API_KEY, MBBANK_USERNAME, MBBANK_PASSWORD, MBBANK_ACCOUNT in environment variables.',
+            hint: 'Go to Railway → Service → Variables to add them.',
+        }, { status: 500 });
     }
 
     try {
-        // Use apicanhan to fetch transactions
         const apiUrl = `https://apicanhan.com/api/mb/transactions`;
         const response = await fetch(apiUrl, {
             method: 'POST',
@@ -35,18 +48,7 @@ export async function GET() {
         });
 
         if (!response.ok) {
-            // Fallback: try reading local api_response.json for demo
-            const fallbackPath = path.join(process.cwd(), 'MY_BOT', 'MY_BOT', 'api_response.json');
-            if (fs.existsSync(fallbackPath)) {
-                const data = JSON.parse(fs.readFileSync(fallbackPath, 'utf-8'));
-                return NextResponse.json({
-                    status: 'success',
-                    source: 'local_cache',
-                    transactions: data.transactions?.slice(0, 50) || [],
-                    accountNo: config.accountNo,
-                });
-            }
-            return NextResponse.json({ error: 'Failed to fetch from MBBank API' }, { status: 502 });
+            return NextResponse.json({ error: 'Failed to fetch from MBBank API', status: response.status }, { status: 502 });
         }
 
         const data = await response.json();
@@ -57,17 +59,6 @@ export async function GET() {
             accountNo: config.accountNo,
         });
     } catch (error: any) {
-        // Fallback to local cache
-        const fallbackPath = path.join(process.cwd(), 'MY_BOT', 'MY_BOT', 'api_response.json');
-        if (fs.existsSync(fallbackPath)) {
-            const data = JSON.parse(fs.readFileSync(fallbackPath, 'utf-8'));
-            return NextResponse.json({
-                status: 'success',
-                source: 'local_cache',
-                transactions: data.transactions?.slice(0, 50) || [],
-                accountNo: config.accountNo,
-            });
-        }
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
@@ -81,7 +72,6 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        // Try live API first, fallback to local
         let transactions: any[] = [];
 
         try {
@@ -101,15 +91,7 @@ export async function POST(req: NextRequest) {
                 transactions = data.transactions || [];
             }
         } catch {
-            // Use local cache
-        }
-
-        if (transactions.length === 0) {
-            const fallbackPath = path.join(process.cwd(), 'MY_BOT', 'MY_BOT', 'api_response.json');
-            if (fs.existsSync(fallbackPath)) {
-                const data = JSON.parse(fs.readFileSync(fallbackPath, 'utf-8'));
-                transactions = data.transactions || [];
-            }
+            // API call failed
         }
 
         // Search for matching transaction
