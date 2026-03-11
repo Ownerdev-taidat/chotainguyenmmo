@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
         if (match) {
             // Found matching transaction — credit the user's wallet
             try {
-                await prisma.$transaction(async (tx) => {
+                await prisma.$transaction(async (tx: any) => {
                     // Check if this transaction was already processed
                     const existingDeposit = await tx.deposit.findFirst({
                         where: {
