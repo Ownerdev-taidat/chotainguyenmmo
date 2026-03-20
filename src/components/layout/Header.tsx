@@ -165,7 +165,6 @@ export default function Header() {
                             <>
                                 <Link href="/dashboard/tin-nhan" className="relative p-2 rounded-xl text-brand-primary" title="Tin nhắn">
                                     <MessageSquare className="w-5 h-5" />
-                                    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-brand-danger text-white text-[8px] font-bold rounded-full flex items-center justify-center">3</span>
                                 </Link>
                                 <Link href="/dashboard/nap-tien" className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-brand-primary/10 text-brand-primary" title="Ví tiền">
                                     <Wallet className="w-3.5 h-3.5" />

@@ -227,10 +227,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     <PlusCircle className="w-3 h-3" /> Nạp
                                 </Link>
                             </div>
-                            <button className="relative p-2 rounded-xl text-brand-text-secondary hover:bg-brand-surface-2 transition-all">
+                            <Link href="/dashboard/thong-bao" className="relative p-2 rounded-xl text-brand-text-secondary hover:bg-brand-surface-2 transition-all">
                                 <Bell className="w-5 h-5" />
-                                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-brand-danger text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">2</span>
-                            </button>
+                                {unreadCount > 0 && (
+                                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-brand-danger text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">{unreadCount > 99 ? '99+' : unreadCount}</span>
+                                )}
+                            </Link>
                         </div>
                     </div>
 

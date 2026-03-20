@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
-import { Wallet, ShoppingBag, AlertTriangle, ArrowRight, TrendingUp, Clock, Package, Loader2 } from 'lucide-react';
+import { Wallet, ShoppingBag, AlertTriangle, ArrowRight, TrendingUp, Clock, Package, Loader2, Bell } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { sampleOrders, sampleTransactions, sampleNotifications } from '@/lib/mock-data';
 
@@ -79,20 +79,20 @@ export default function UserDashboard() {
             {/* Metrics */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                    { icon: Wallet, label: 'Số dư khả dụng', value: formatCurrency(balance), color: 'text-brand-success', bgIcon: 'bg-brand-success/10' },
-                    { icon: ShoppingBag, label: 'Tổng đơn hàng', value: String(orders.length), color: 'text-brand-primary', bgIcon: 'bg-brand-primary/10' },
-                    { icon: TrendingUp, label: 'Giao dịch gần đây', value: String(transactions.length), color: 'text-brand-info', bgIcon: 'bg-brand-info/10' },
-                    { icon: AlertTriangle, label: 'Khiếu nại đang mở', value: '0', color: 'text-brand-warning', bgIcon: 'bg-brand-warning/10' },
+                    { icon: Wallet, label: 'Số dư khả dụng', value: formatCurrency(balance), color: 'text-brand-success', bgIcon: 'bg-brand-success/10', href: '/dashboard/vi' },
+                    { icon: ShoppingBag, label: 'Tổng đơn hàng', value: String(orders.length), color: 'text-brand-primary', bgIcon: 'bg-brand-primary/10', href: '/dashboard/don-hang' },
+                    { icon: TrendingUp, label: 'Giao dịch gần đây', value: String(transactions.length), color: 'text-brand-info', bgIcon: 'bg-brand-info/10', href: '/dashboard/vi' },
+                    { icon: AlertTriangle, label: 'Khiếu nại đang mở', value: '0', color: 'text-brand-warning', bgIcon: 'bg-brand-warning/10', href: '/dashboard/khieu-nai' },
                 ].map((metric, i) => (
-                    <div key={i} className="card">
+                    <Link key={i} href={metric.href} className="card hover:shadow-card-hover hover:border-brand-primary/30 transition-all cursor-pointer group">
                         <div className="flex items-center justify-between mb-3">
                             <span className="text-xs text-brand-text-muted font-medium">{metric.label}</span>
-                            <div className={`w-9 h-9 rounded-xl ${metric.bgIcon} flex items-center justify-center`}>
+                            <div className={`w-9 h-9 rounded-xl ${metric.bgIcon} flex items-center justify-center group-hover:scale-110 transition-transform`}>
                                 <metric.icon className={`w-5 h-5 ${metric.color}`} />
                             </div>
                         </div>
                         <div className={`text-2xl font-bold ${metric.color}`}>{metric.value}</div>
-                    </div>
+                    </Link>
                 ))}
             </div>
 
@@ -146,14 +146,21 @@ export default function UserDashboard() {
                             Tất cả
                         </Link>
                     </div>
-                    <div className="space-y-3">
-                        {sampleNotifications.slice(0, 4).map(notif => (
-                            <div key={notif.id} className={`p-3 rounded-xl text-sm ${notif.isRead ? 'bg-brand-surface-2' : 'bg-brand-primary/5 border border-brand-primary/10'}`}>
-                                <div className="font-medium text-brand-text-primary text-xs mb-1">{notif.title}</div>
-                                <div className="text-xs text-brand-text-muted line-clamp-2">{notif.message}</div>
-                            </div>
-                        ))}
-                    </div>
+                    {sampleNotifications.length > 0 ? (
+                        <div className="space-y-3">
+                            {sampleNotifications.slice(0, 4).map(notif => (
+                                <div key={notif.id} className={`p-3 rounded-xl text-sm ${notif.isRead ? 'bg-brand-surface-2' : 'bg-brand-primary/5 border border-brand-primary/10'}`}>
+                                    <div className="font-medium text-brand-text-primary text-xs mb-1">{notif.title}</div>
+                                    <div className="text-xs text-brand-text-muted line-clamp-2">{notif.message}</div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-sm text-brand-text-muted">
+                            <Bell className="w-8 h-8 mx-auto mb-2 text-brand-text-muted/30" />
+                            Chưa có thông báo mới.
+                        </div>
+                    )}
                 </div>
             </div>
 
