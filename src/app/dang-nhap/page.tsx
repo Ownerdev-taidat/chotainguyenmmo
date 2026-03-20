@@ -80,9 +80,9 @@ export default function LoginPage() {
     return (
         <>
             <Header />
-            <main className="min-h-screen flex items-center justify-center py-12">
+            <main className="min-h-screen flex items-center justify-center py-6 md:py-12 pt-24 md:pt-12">
                 <div className="max-w-container mx-auto px-4 w-full">
-                    <div className="grid lg:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
+                    <div className="grid lg:grid-cols-2 gap-8 md:gap-12 items-center max-w-5xl mx-auto">
                         {/* Left - Brand */}
                         <div className="hidden lg:block">
                             <div className="flex items-center gap-3 mb-8">
@@ -114,7 +114,7 @@ export default function LoginPage() {
                         </div>
 
                         {/* Right - Form */}
-                        <div className="card !p-8 max-w-md mx-auto w-full lg:max-w-none">
+                        <div className="card !p-5 md:!p-8 max-w-md mx-auto w-full lg:max-w-none">
                             <div className="lg:hidden flex items-center gap-2 mb-6 justify-center">
                                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center">
                                     <span className="text-white font-bold text-sm">CT</span>
@@ -159,7 +159,7 @@ export default function LoginPage() {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
                                     <label className="flex items-center gap-2 text-sm text-brand-text-secondary cursor-pointer">
                                         <input type="checkbox" className="rounded border-brand-border bg-brand-surface-2" />
                                         Ghi nhớ đăng nhập

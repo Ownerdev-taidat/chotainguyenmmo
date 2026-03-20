@@ -119,7 +119,7 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
                         {/* Main Content */}
                         <div className="flex-1 min-w-0">
                             {/* Header */}
-                            <div className="flex items-center justify-between mb-6">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-3">
                                 <div>
                                     <h1 className="text-xl font-bold text-brand-text-primary">
                                         {category ? category.name : 'Tất cả sản phẩm'}
@@ -142,7 +142,7 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
                                         <select
                                             value={sortBy}
                                             onChange={(e) => setSortBy(e.target.value)}
-                                            className="input-field !py-2 text-sm pr-8 appearance-none cursor-pointer min-w-[160px]"
+                                            className="input-field !py-2 text-sm pr-8 appearance-none cursor-pointer min-w-[120px] sm:min-w-[160px]"
                                         >
                                             <option value="newest">Mới nhất</option>
                                             <option value="best-selling">Bán chạy</option>
@@ -157,7 +157,7 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
 
                             {/* Product Grid */}
                             {displayProducts.length > 0 ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                                <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-5">
                                     {displayProducts.map((product) => (
                                         <ProductCard key={product.id} product={product} />
                                     ))}
@@ -194,7 +194,7 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
             {showFilters && (
                 <div className="fixed inset-0 z-50 lg:hidden">
                     <div className="absolute inset-0 bg-black/50" onClick={() => setShowFilters(false)} />
-                    <div className="absolute right-0 top-0 bottom-0 w-80 bg-brand-surface border-l border-brand-border p-6 overflow-y-auto">
+                    <div className="absolute right-0 top-0 bottom-0 w-[85vw] max-w-[320px] bg-brand-surface border-l border-brand-border p-4 md:p-6 overflow-y-auto">
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-lg font-semibold text-brand-text-primary">Bộ lọc</h3>
                             <button onClick={() => setShowFilters(false)} className="p-1 hover:bg-brand-surface-2 rounded-lg">

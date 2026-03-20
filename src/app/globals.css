@@ -373,16 +373,114 @@
   }
 
   /* ── Input fields ── */
+  /* Only adjust vertical + right padding; NEVER override padding-left
+     so Tailwind's !pl-11 for icon-prefixed inputs stays intact */
   .input-field {
-    padding: 10px 12px !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    padding-right: 12px !important;
     font-size: 0.875rem !important;
   }
 
   /* ── Announcement popup width ── */
   .fixed.inset-0 .max-w-md,
-  .fixed.inset-0 .max-w-lg {
+  .fixed.inset-0 .max-w-lg,
+  .fixed.inset-0 .max-w-xl,
+  .fixed.inset-0 .max-w-2xl {
     max-width: calc(100vw - 24px) !important;
     margin: 0 12px;
+  }
+
+  /* ── Breadcrumb — truncate and scroll ── */
+  nav.flex.items-center.gap-2.text-sm {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    font-size: 0.75rem;
+  }
+  nav.flex.items-center.gap-2.text-sm::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ── Product detail image ── */
+  .h-\[340px\] {
+    height: 200px !important;
+  }
+
+  /* ── Footer logo ── */
+  footer img[alt="ChoTaiNguyen"] {
+    height: 40px !important;
+  }
+
+  /* ── Confirm / Purchase dialogs ── */
+  .fixed.inset-0 .card,
+  .fixed.inset-0 > div > div {
+    max-width: calc(100vw - 32px) !important;
+  }
+
+  /* ── Select dropdown ── */
+  select.input-field {
+    font-size: 0.813rem !important;
+    min-width: 0 !important;
+  }
+
+  /* ── Product card text truncation ── */
+  .group .text-sm.font-semibold.line-clamp-2 {
+    font-size: 0.75rem;
+    min-height: 2em;
+  }
+
+  .group .text-lg.font-bold.text-brand-primary {
+    font-size: 0.875rem;
+  }
+
+  /* ── Touch targets — minimum 44px ── */
+  button, a {
+    min-height: 36px;
+  }
+
+  /* Small icon buttons exempt */
+  button.p-1,
+  button.p-1\.5,
+  button.p-2 {
+    min-height: auto;
+  }
+
+  /* ── Wallet summary cards ── */
+  .grid.grid-cols-1.sm\:grid-cols-3 {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+  }
+  .grid.grid-cols-1.sm\:grid-cols-3 .card {
+    padding: 10px !important;
+  }
+  .grid.grid-cols-1.sm\:grid-cols-3 .text-xl {
+    font-size: 0.875rem;
+  }
+
+  /* ── Balance card ── */
+  .text-3xl.md\:text-4xl {
+    font-size: 1.5rem !important;
+  }
+
+  /* ── Footer grid 2-cols on phone ── */
+  footer .grid.grid-cols-1.sm\:grid-cols-2.lg\:grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 16px !important;
+  }
+
+  /* ── Product page variants ── */
+  .flex.flex-wrap.gap-1\.5 button {
+    font-size: 0.688rem;
+    padding: 4px 8px;
+  }
+
+  /* ── Chat input area  ── */
+  .sticky.bottom-0 input,
+  .sticky.bottom-0 textarea {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
   }
 }
 

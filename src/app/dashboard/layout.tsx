@@ -216,15 +216,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </Link>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Link href="/dashboard/vi" className="flex items-center gap-1.5 bg-brand-success/10 border border-brand-success/20 rounded-xl px-3 py-1.5 text-sm hover:bg-brand-success/20 transition-all">
-                                <Wallet className="w-4 h-4 text-brand-success" />
-                                <span className="text-brand-success font-semibold">
-                                    {(user?.walletBalance || 0).toLocaleString('vi-VN')}đ
-                                </span>
-                                <span className="text-[10px] bg-brand-primary text-white px-1.5 py-0.5 rounded font-medium">
-                                    <PlusCircle className="w-3 h-3 inline -mt-0.5" /> Nạp
-                                </span>
-                            </Link>
+                            <div className="flex items-center bg-brand-success/10 border border-brand-success/20 rounded-xl overflow-hidden">
+                                <Link href="/dashboard/vi" className="flex items-center gap-1.5 px-3 py-1.5 text-sm hover:bg-brand-success/20 transition-all">
+                                    <Wallet className="w-4 h-4 text-brand-success" />
+                                    <span className="text-brand-success font-semibold">
+                                        {(user?.walletBalance || 0).toLocaleString('vi-VN')}đ
+                                    </span>
+                                </Link>
+                                <Link href="/dashboard/nap-tien" className="flex items-center gap-0.5 bg-brand-primary hover:bg-brand-primary/90 text-white px-2 py-1.5 text-[10px] font-medium transition-all">
+                                    <PlusCircle className="w-3 h-3" /> Nạp
+                                </Link>
+                            </div>
                             <button className="relative p-2 rounded-xl text-brand-text-secondary hover:bg-brand-surface-2 transition-all">
                                 <Bell className="w-5 h-5" />
                                 <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-brand-danger text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">2</span>

@@ -147,7 +147,7 @@ export default function DepositPage() {
     return (
         <div className="space-y-6 max-w-3xl mx-auto">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
                     <h1 className="text-xl font-bold text-gray-900">Nạp tiền</h1>
                     <p className="text-sm text-gray-500 mt-0.5">Chuyển khoản MBBank · Tự động xác nhận</p>
@@ -169,11 +169,11 @@ export default function DepositPage() {
             {step === 'select' && (
                 <div className="space-y-4">
                     {/* Amount grid */}
-                    <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                    <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-6 shadow-sm">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
                             <CreditCard className="w-4 h-4 text-blue-500" /> Chọn mệnh giá
                         </h2>
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                             {DEPOSIT_AMOUNTS.map(a => (
                                 <button key={a} onClick={() => { setSelectedAmount(a); setCustomAmount(''); }}
                                     className={`relative py-4 rounded-xl text-center font-semibold transition-all border-2 ${
@@ -317,18 +317,18 @@ export default function DepositPage() {
                             {/* Main content: two columns */}
                             <div className="grid md:grid-cols-2 gap-4">
                                 {/* Left: QR Code */}
-                                <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm flex flex-col items-center">
+                                <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-6 shadow-sm flex flex-col items-center">
                                     <h3 className="text-sm font-semibold text-gray-600 mb-4 flex items-center gap-2">
                                         <QrCode className="w-4 h-4 text-blue-500" /> Quét mã QR
                                     </h3>
                                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                                        <img src={deposit.qrUrl} alt="QR Code" className="w-56 h-56" />
+                                        <img src={deposit.qrUrl} alt="QR Code" className="w-44 h-44 sm:w-56 sm:h-56" />
                                     </div>
                                     <p className="text-[11px] text-gray-400 mt-3 text-center">Mở app ngân hàng → Quét QR → Xác nhận</p>
                                 </div>
 
                                 {/* Right: Bank Info */}
-                                <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm space-y-4">
+                                <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-6 shadow-sm space-y-4">
                                     <h3 className="text-sm font-semibold text-gray-600 flex items-center gap-2">
                                         <CreditCard className="w-4 h-4 text-blue-500" /> Chuyển khoản thủ công
                                     </h3>

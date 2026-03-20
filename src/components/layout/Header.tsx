@@ -28,9 +28,11 @@ export default function Header() {
     const [searchQuery, setSearchQuery] = useState('');
     const [userMenuOpen, setUserMenuOpen] = useState(false);
     const [notifOpen, setNotifOpen] = useState(false);
+    const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const notifRef = useRef<HTMLDivElement>(null);
+    const mobileProfileRef = useRef<HTMLDivElement>(null);
     const dropdownTimeout = useRef<NodeJS.Timeout | null>(null);
 
     // Close menus when clicking outside
@@ -41,6 +43,9 @@ export default function Header() {
             }
             if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
                 setNotifOpen(false);
+            }
+            if (mobileProfileRef.current && !mobileProfileRef.current.contains(event.target as Node)) {
+                setMobileProfileOpen(false);
             }
         }
         document.addEventListener('mousedown', handleClickOutside);
@@ -166,6 +171,54 @@ export default function Header() {
                                     <Wallet className="w-3.5 h-3.5" />
                                     <span>{(user?.walletBalance || 0).toLocaleString('vi-VN')}đ</span>
                                 </Link>
+                                {/* Mobile Profile Avatar */}
+                                <div className="relative" ref={mobileProfileRef}>
+                                    <button
+                                        onClick={() => setMobileProfileOpen(!mobileProfileOpen)}
+                                        className="flex items-center p-1 rounded-full ring-2 ring-brand-primary/30 hover:ring-brand-primary/60 transition-all"
+                                    >
+                                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center">
+                                            <span className="text-white text-[10px] font-bold">{getInitials(user.fullName)}</span>
+                                        </div>
+                                    </button>
+                                    {mobileProfileOpen && (
+                                        <div className="absolute right-0 top-full mt-2 w-56 bg-brand-surface border border-brand-border rounded-xl shadow-card-hover py-1 z-50">
+                                            {/* User info */}
+                                            <div className="px-4 py-2.5 border-b border-brand-border">
+                                                <div className="text-sm font-semibold text-brand-text-primary">{user.fullName}</div>
+                                                <div className="text-xs text-brand-text-muted">@{user.username}</div>
+                                                {(user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') && (
+                                                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] bg-brand-danger/10 text-brand-danger px-2 py-0.5 rounded-full font-medium">
+                                                        <Shield className="w-3 h-3" /> Admin
+                                                    </span>
+                                                )}
+                                                {user.role === 'SELLER' && (
+                                                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] bg-brand-primary/10 text-brand-primary px-2 py-0.5 rounded-full font-medium">
+                                                        <Store className="w-3 h-3" /> Seller
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <Link href={getDashboardLink()} onClick={() => setMobileProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
+                                                <LayoutDashboard className="w-4 h-4" /> Bảng điều khiển
+                                            </Link>
+                                            <Link href="/dashboard/nap-tien" onClick={() => setMobileProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
+                                                <Wallet className="w-4 h-4 text-brand-primary" />
+                                                <span>Nạp tiền</span>
+                                                <span className="ml-auto text-xs font-semibold text-brand-success">{(user.walletBalance || 0).toLocaleString('vi-VN')}đ</span>
+                                            </Link>
+                                            <Link href="/dashboard/don-hang" onClick={() => setMobileProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
+                                                <Package className="w-4 h-4" /> Lịch sử mua hàng
+                                            </Link>
+                                            <Link href="/dashboard/ho-so" onClick={() => setMobileProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
+                                                <Settings className="w-4 h-4" /> Hồ sơ
+                                            </Link>
+                                            <div className="border-t border-brand-border my-1" />
+                                            <button onClick={() => { setMobileProfileOpen(false); handleLogout(); }} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-brand-danger hover:bg-brand-surface-2 w-full transition-colors">
+                                                <LogOut className="w-4 h-4" /> Đăng xuất
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </>
                         ) : !isLoading ? (
                             <Link href="/dang-nhap" className="btn-primary !px-3 !py-1.5 text-xs flex items-center gap-1">

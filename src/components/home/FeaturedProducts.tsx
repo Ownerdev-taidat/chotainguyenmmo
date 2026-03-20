@@ -21,7 +21,7 @@ export default async function FeaturedProducts() {
     return (
         <section className="section-padding bg-brand-surface/30">
             <div className="max-w-container mx-auto px-4">
-                <div className="flex items-end justify-between mb-10">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 md:mb-10 gap-3">
                     <div>
                         <h2 className="text-2xl md:text-3xl font-bold text-brand-text-primary mb-3">Sản phẩm nổi bật</h2>
                         <p className="text-brand-text-secondary">
@@ -39,7 +39,7 @@ export default async function FeaturedProducts() {
                         <p>Chưa có sản phẩm nào. Các sản phẩm sẽ hiện ở đây khi seller đăng bán.</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
                         {products.map((p) => (
                             <div key={p.id} className="group bg-brand-surface border border-brand-border rounded-2xl overflow-hidden hover:border-brand-primary/30 hover:shadow-card-hover hover:-translate-y-1 transition-all duration-300">
                                 <div className="relative h-40 bg-gradient-to-br from-brand-surface-2 to-brand-surface-3 flex items-center justify-center overflow-hidden">

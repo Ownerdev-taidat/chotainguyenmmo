@@ -100,9 +100,9 @@ export default function RegisterPage() {
     return (
         <>
             <Header />
-            <main className="min-h-screen flex items-center justify-center py-12">
+            <main className="min-h-screen flex items-center justify-center py-6 md:py-12 pt-24 md:pt-12">
                 <div className="max-w-md mx-auto w-full px-4">
-                    <div className="card !p-8">
+                    <div className="card !p-5 md:!p-8">
                         <div className="flex items-center gap-2 mb-6 justify-center">
                             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center">
                                 <span className="text-white font-bold text-sm">CT</span>
