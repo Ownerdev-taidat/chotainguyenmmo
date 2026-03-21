@@ -177,8 +177,10 @@ export async function POST(request: NextRequest) {
 
             // 6. Auto-generate invoice
             const invoiceNumber = `HD-${new Date().getFullYear().toString().slice(2)}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
-            const vatRate = 10;
-            const invoiceSubtotal = Math.round(totalAmount / (1 + vatRate / 100));
+            const settings = getPlatformSettings();
+            const taxEnabled = settings.taxEnabled ?? false;
+            const vatRate = taxEnabled ? (settings.vatRate ?? 10) : 0;
+            const invoiceSubtotal = vatRate > 0 ? Math.round(totalAmount / (1 + vatRate / 100)) : totalAmount;
             const vatAmount = totalAmount - invoiceSubtotal;
 
             await tx.invoice.create({

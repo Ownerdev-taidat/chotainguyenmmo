@@ -14,6 +14,7 @@ interface Invoice {
     vatAmount: number;
     feeAmount: number;
     totalAmount: number;
+    taxEnabled: boolean;
     items: string;
     status: string;
     issuedAt: string;
@@ -25,10 +26,11 @@ export default function AdminInvoicesPage() {
     const [selected, setSelected] = useState<Invoice | null>(null);
     const [search, setSearch] = useState('');
 
-    const fetchInvoices = async () => {
+    const fetchInvoices = async (doBackfill = false) => {
         try {
             const token = localStorage.getItem('admin_token') || localStorage.getItem('token') || '';
-            const res = await fetch('/api/v1/invoices', {
+            const url = doBackfill ? '/api/v1/invoices?backfill=true' : '/api/v1/invoices';
+            const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
@@ -37,7 +39,7 @@ export default function AdminInvoicesPage() {
         setLoading(false);
     };
 
-    useEffect(() => { fetchInvoices(); }, []);
+    useEffect(() => { fetchInvoices(true); }, []);
 
     const fmt = (n: number) => n.toLocaleString('vi-VN') + 'đ';
     const fmtDate = (d: string) => {
@@ -64,15 +66,15 @@ export default function AdminInvoicesPage() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-xl font-bold text-brand-text-primary mb-1">Hóa đơn thuế</h1>
-                    <p className="text-sm text-brand-text-muted">Quản lý hóa đơn điện tử theo Thông tư 78/2021/TT-BTC. VAT 10% tự động tính trên mỗi đơn.</p>
+                    <p className="text-sm text-brand-text-muted">Quản lý hóa đơn điện tử theo Thông tư 78/2021/TT-BTC.</p>
                 </div>
-                <button onClick={() => { setLoading(true); fetchInvoices(); }} className="btn-secondary !py-2 !px-3 text-sm flex items-center gap-1.5">
+                <button onClick={() => { setLoading(true); fetchInvoices(true); }} className="btn-secondary !py-2 !px-3 text-sm flex items-center gap-1.5">
                     <RefreshCw className="w-3.5 h-3.5" /> Làm mới
                 </button>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className={`grid grid-cols-2 ${totalVat > 0 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-4`}>
                 <div className="card !p-4">
                     <div className="text-xl font-bold text-brand-primary">{invoices.length}</div>
                     <div className="text-xs text-brand-text-muted mt-1">Tổng hóa đơn</div>
@@ -81,10 +83,12 @@ export default function AdminInvoicesPage() {
                     <div className="text-xl font-bold text-brand-success">{fmt(totalRevenue)}</div>
                     <div className="text-xs text-brand-text-muted mt-1">Tổng doanh thu</div>
                 </div>
-                <div className="card !p-4">
-                    <div className="text-xl font-bold text-brand-danger">{fmt(totalVat)}</div>
-                    <div className="text-xs text-brand-text-muted mt-1">Tổng thuế VAT</div>
-                </div>
+                {totalVat > 0 && (
+                    <div className="card !p-4">
+                        <div className="text-xl font-bold text-brand-danger">{fmt(totalVat)}</div>
+                        <div className="text-xs text-brand-text-muted mt-1">Tổng thuế VAT</div>
+                    </div>
+                )}
                 <div className="card !p-4">
                     <div className="text-xl font-bold text-brand-info">{fmt(totalFees)}</div>
                     <div className="text-xs text-brand-text-muted mt-1">Tổng phí sàn</div>
@@ -123,8 +127,9 @@ export default function AdminInvoicesPage() {
                                 <th className="px-4 py-3 text-left font-medium">Mã đơn</th>
                                 <th className="px-4 py-3 text-left font-medium">Người mua</th>
                                 <th className="px-4 py-3 text-left font-medium">Shop</th>
-                                <th className="px-4 py-3 text-right font-medium">Trước thuế</th>
-                                <th className="px-4 py-3 text-right font-medium">VAT 10%</th>
+                                <th className="px-4 py-3 text-right font-medium">Tiền hàng</th>
+                                {filtered.some(i => i.taxEnabled) && <th className="px-4 py-3 text-right font-medium">VAT</th>}
+                                <th className="px-4 py-3 text-right font-medium">Phí sàn</th>
                                 <th className="px-4 py-3 text-right font-medium">Tổng</th>
                                 <th className="px-4 py-3 text-left font-medium">Ngày</th>
                                 <th className="px-4 py-3 text-center font-medium">Thao tác</th>
@@ -138,7 +143,8 @@ export default function AdminInvoicesPage() {
                                     <td className="px-4 py-3">{inv.buyerName}</td>
                                     <td className="px-4 py-3">{inv.sellerName}</td>
                                     <td className="px-4 py-3 text-right">{fmt(inv.subtotal)}</td>
-                                    <td className="px-4 py-3 text-right text-brand-danger">{fmt(inv.vatAmount)}</td>
+                                    {filtered.some(i => i.taxEnabled) && <td className="px-4 py-3 text-right text-brand-danger">{inv.taxEnabled ? fmt(inv.vatAmount) : '-'}</td>}
+                                    <td className="px-4 py-3 text-right text-brand-info">{fmt(inv.feeAmount)}</td>
                                     <td className="px-4 py-3 text-right font-semibold">{fmt(inv.totalAmount)}</td>
                                     <td className="px-4 py-3 text-xs text-brand-text-muted">{fmtDate(inv.issuedAt)}</td>
                                     <td className="px-4 py-3 text-center">
@@ -227,13 +233,15 @@ export default function AdminInvoicesPage() {
                             {/* Totals */}
                             <div className="bg-brand-surface-2 rounded-xl p-4 space-y-2">
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-brand-text-muted">Cộng tiền hàng (trước thuế)</span>
+                                    <span className="text-brand-text-muted">Tiền hàng</span>
                                     <span className="font-medium">{fmt(selected.subtotal)}</span>
                                 </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-brand-text-muted">Thuế GTGT ({selected.vatRate}%)</span>
-                                    <span className="font-medium text-brand-danger">{fmt(selected.vatAmount)}</span>
-                                </div>
+                                {selected.taxEnabled && selected.vatAmount > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-brand-text-muted">Thuế GTGT ({selected.vatRate}%)</span>
+                                        <span className="font-medium text-brand-danger">{fmt(selected.vatAmount)}</span>
+                                    </div>
+                                )}
                                 {selected.feeAmount > 0 && (
                                     <div className="flex justify-between text-sm">
                                         <span className="text-brand-text-muted">Phí sàn</span>

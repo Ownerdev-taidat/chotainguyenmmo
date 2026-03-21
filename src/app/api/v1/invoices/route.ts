@@ -103,9 +103,69 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const orderId = searchParams.get('orderId');
+    const backfill = searchParams.get('backfill');
 
     try {
         const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes((authResult as any).role || '');
+
+        // ── Backfill: create invoices for old orders that don't have one ──
+        if (backfill === 'true' && isAdmin) {
+            const ordersWithoutInvoice = await prisma.order.findMany({
+                where: {
+                    status: { in: ['COMPLETED', 'PROCESSING', 'DELIVERED'] },
+                    invoices: { none: {} },
+                },
+                include: {
+                    buyer: { select: { fullName: true, username: true, email: true } },
+                    shop: { select: { name: true } },
+                    items: { include: { product: { select: { name: true } } } },
+                },
+                take: 500,
+            });
+
+            let created = 0;
+            for (const order of ordersWithoutInvoice) {
+                try {
+                    const settings = getPlatformSettings();
+                    const taxEnabled = settings.taxEnabled ?? false;
+                    const vatRate = taxEnabled ? (settings.vatRate ?? 10) : 0;
+                    const subtotal = vatRate > 0 ? Math.round(order.totalAmount / (1 + vatRate / 100)) : order.totalAmount;
+                    const vatAmount = order.totalAmount - subtotal;
+                    const items = order.items.map(item => ({
+                        name: item.product?.name || 'Sản phẩm',
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        total: item.total,
+                    }));
+
+                    const d = order.createdAt;
+                    const invoiceNumber = `HD-${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
+
+                    await prisma.invoice.create({
+                        data: {
+                            invoiceNumber,
+                            orderId: order.id,
+                            orderCode: order.orderCode,
+                            buyerId: order.buyerId,
+                            buyerName: order.buyer.fullName || order.buyer.username,
+                            buyerEmail: order.buyer.email,
+                            sellerName: order.shop.name,
+                            subtotal,
+                            vatRate,
+                            vatAmount,
+                            feeAmount: order.feeAmount,
+                            totalAmount: order.totalAmount,
+                            items: JSON.stringify(items),
+                            issuedAt: order.createdAt,
+                        },
+                    });
+                    created++;
+                } catch (err) {
+                    console.error(`Backfill invoice for order ${order.orderCode} failed:`, err);
+                }
+            }
+            console.log(`[Invoice Backfill] Created ${created} invoices for ${ordersWithoutInvoice.length} orders`);
+        }
 
         let where: any = {};
         if (orderId) {
@@ -117,10 +177,18 @@ export async function GET(request: NextRequest) {
         const invoices = await prisma.invoice.findMany({
             where,
             orderBy: { issuedAt: 'desc' },
-            take: 100,
+            take: 500,
         });
 
-        return NextResponse.json({ success: true, data: invoices });
+        // Read current tax state to pass to frontend
+        let taxEnabled = false;
+        try {
+            const taxSetting = await prisma.setting.findUnique({ where: { key: 'tax_settings' } });
+            if (taxSetting) taxEnabled = !!JSON.parse(taxSetting.value).enabled;
+        } catch {}
+
+        const data = invoices.map(inv => ({ ...inv, taxEnabled }));
+        return NextResponse.json({ success: true, data });
     } catch (error) {
         console.error('Invoice list error:', error);
         return NextResponse.json({ success: false, message: 'Lỗi hệ thống' }, { status: 500 });
