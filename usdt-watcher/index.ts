@@ -34,7 +34,7 @@ const BSC_PUBLIC_ADDRESS  = process.env.BSC_PUBLIC_ADDRESS  || '0x66846F8135B3a5
 const TRC20_USDT_CONTRACT = process.env.TRC20_USDT_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const BEP20_USDT_CONTRACT = (process.env.BEP20_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
 
-const BSC_RPC_URL   = process.env.BSC_RPC_URL    || 'https://bsc-dataseed.bnbchain.org';
+const BSC_RPC_URL   = process.env.BSC_RPC_URL    || 'https://bsc.publicnode.com';
 const TRONGRID_API  = process.env.TRON_FULL_HOST  || 'https://api.trongrid.io';
 
 const POLL_INTERVAL_MS = parseInt(process.env.USDT_POLL_INTERVAL || '15000'); // 15 seconds
@@ -174,7 +174,7 @@ async function scanBEP20(): Promise<void> {
         }
 
         const fromBlock = checkpoint.lastBlock + 1;
-        const toBlock = Math.min(fromBlock + 199, currentBlock); // 200 blocks max (public RPC limit)
+        const toBlock = Math.min(fromBlock + 49, currentBlock); // 50 blocks max (free RPC limit)
 
         if (fromBlock > currentBlock) return;
 

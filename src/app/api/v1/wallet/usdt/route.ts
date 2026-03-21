@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
                 createdAt: { gte: oneHourAgo },
             },
         });
-        if (recentCount >= 3) {
+        if (recentCount >= 50) {
             return NextResponse.json(
                 { success: false, message: 'Bạn đã tạo quá nhiều yêu cầu USDT. Thử lại sau 1 giờ.' },
                 { status: 429 }
