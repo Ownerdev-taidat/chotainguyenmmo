@@ -27,18 +27,57 @@ export async function GET(request: NextRequest) {
 
         const now = new Date();
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // ── Period filter ──
+        const { searchParams } = new URL(request.url);
+        const period = searchParams.get('period') || 'month';
+        let periodStart: Date;
+        let periodLabel = '';
+
+        if (period === 'today') {
+            periodStart = startOfDay;
+            periodLabel = 'Hôm nay';
+        } else if (period === '3months') {
+            periodStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+            periodLabel = '3 tháng gần nhất';
+        } else if (period === '6months') {
+            periodStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+            periodLabel = '6 tháng gần nhất';
+        } else if (period === 'year') {
+            periodStart = new Date(now.getFullYear(), 0, 1);
+            periodLabel = `Năm ${now.getFullYear()}`;
+        } else if (/^\d{4}-\d{2}$/.test(period)) {
+            // Specific month: YYYY-MM
+            const [y, m] = period.split('-').map(Number);
+            periodStart = new Date(y, m - 1, 1);
+            periodLabel = `Tháng ${m}/${y}`;
+        } else {
+            // Default: this month
+            periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            periodLabel = `Tháng ${now.getMonth() + 1}/${now.getFullYear()}`;
+        }
+
+        // Period end (for specific month)
+        let periodEnd: Date | undefined;
+        if (/^\d{4}-\d{2}$/.test(period)) {
+            const [y, m] = period.split('-').map(Number);
+            periodEnd = new Date(y, m, 1);
+        }
+
+        const periodWhere = periodEnd
+            ? { gte: periodStart, lt: periodEnd }
+            : { gte: periodStart };
 
         // Get orders
-        const [allOrders, todayOrders, monthOrders, pendingOrders] = await Promise.all([
+        const [allOrders, todayOrders, periodOrders, pendingOrders] = await Promise.all([
             prisma.order.count({ where: { shopId: shop.id } }),
             prisma.order.findMany({
                 where: { shopId: shop.id, createdAt: { gte: startOfDay }, paymentStatus: 'PAID' },
                 select: { totalAmount: true },
             }),
             prisma.order.findMany({
-                where: { shopId: shop.id, createdAt: { gte: startOfMonth }, paymentStatus: 'PAID' },
-                select: { totalAmount: true },
+                where: { shopId: shop.id, createdAt: periodWhere, paymentStatus: 'PAID' },
+                select: { totalAmount: true, feeAmount: true },
             }),
             prisma.order.count({
                 where: { shopId: shop.id, status: { in: ['PENDING', 'PAID', 'PROCESSING'] } },
@@ -46,10 +85,11 @@ export async function GET(request: NextRequest) {
         ]);
 
         // Products & complaints
-        const [activeProducts, openComplaints, completedOrders] = await Promise.all([
+        const [activeProducts, openComplaints, completedOrders, periodCompletedOrders] = await Promise.all([
             prisma.product.count({ where: { shopId: shop.id, status: 'ACTIVE' } }),
             prisma.order.count({ where: { shopId: shop.id, status: 'DISPUTED' } }),
             prisma.order.count({ where: { shopId: shop.id, status: 'COMPLETED' } }),
+            prisma.order.count({ where: { shopId: shop.id, status: 'COMPLETED', createdAt: periodWhere } }),
         ]);
 
         // Pending withdrawals
@@ -69,22 +109,9 @@ export async function GET(request: NextRequest) {
             },
         });
 
-        // Get fee data from all orders
-        const [todayOrdersFull, monthOrdersFull] = await Promise.all([
-            prisma.order.findMany({
-                where: { shopId: shop.id, createdAt: { gte: startOfDay }, paymentStatus: 'PAID' },
-                select: { totalAmount: true, feeAmount: true },
-            }),
-            prisma.order.findMany({
-                where: { shopId: shop.id, createdAt: { gte: startOfMonth }, paymentStatus: 'PAID' },
-                select: { totalAmount: true, feeAmount: true },
-            }),
-        ]);
-
-        const revenueToday = todayOrdersFull.reduce((s, o) => s + (o.totalAmount - o.feeAmount), 0);
-        const revenueMonth = monthOrdersFull.reduce((s, o) => s + (o.totalAmount - o.feeAmount), 0);
-        const feesToday = todayOrdersFull.reduce((s, o) => s + o.feeAmount, 0);
-        const feesMonth = monthOrdersFull.reduce((s, o) => s + o.feeAmount, 0);
+        const revenueToday = todayOrders.reduce((s, o) => s + o.totalAmount, 0);
+        const revenuePeriod = periodOrders.reduce((s, o) => s + (o.totalAmount - o.feeAmount), 0);
+        const feesPeriod = periodOrders.reduce((s, o) => s + o.feeAmount, 0);
 
         // Get held balance
         const sellerWallet = await prisma.wallet.findUnique({ where: { userId: authResult.userId } });
@@ -94,9 +121,12 @@ export async function GET(request: NextRequest) {
             success: true,
             data: {
                 revenueToday,
-                revenueMonth,
-                feesToday,
-                feesMonth,
+                revenueMonth: revenuePeriod,
+                revenuePeriod,
+                feesPeriod,
+                periodLabel,
+                periodOrders: periodOrders.length,
+                periodCompletedOrders,
                 commissionRate,
                 heldBalance: sellerWallet?.heldBalance || 0,
                 availableBalance: sellerWallet?.availableBalance || 0,
