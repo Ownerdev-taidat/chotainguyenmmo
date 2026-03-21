@@ -1,32 +1,22 @@
-import { Wallet, Search, Package } from 'lucide-react';
+'use client';
 
-const steps = [
-    {
-        icon: Wallet,
-        step: '01',
-        title: 'Nạp tiền vào ví',
-        description: 'Nạp tiền vào hệ thống để sẵn sàng giao dịch nhanh hơn và quản lý chi tiêu thuận tiện hơn.',
-    },
-    {
-        icon: Search,
-        step: '02',
-        title: 'Chọn sản phẩm phù hợp',
-        description: 'Tìm kiếm, lọc và so sánh sản phẩm từ nhiều gian hàng theo nhu cầu của bạn.',
-    },
-    {
-        icon: Package,
-        step: '03',
-        title: 'Nhận hàng và theo dõi đơn',
-        description: 'Hoàn tất thanh toán, nhận thông tin giao hàng và theo dõi trạng thái đơn ngay trên hệ thống.',
-    },
-];
+import { Wallet, Search, Package } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
 
 export default function StepsSection() {
+    const { t } = useI18n();
+
+    const steps = [
+        { icon: Wallet, step: '01', titleKey: 'step1Title' as const, descKey: 'step1Desc' as const },
+        { icon: Search, step: '02', titleKey: 'step2Title' as const, descKey: 'step2Desc' as const },
+        { icon: Package, step: '03', titleKey: 'step3Title' as const, descKey: 'step3Desc' as const },
+    ];
+
     return (
         <section className="section-padding">
             <div className="max-w-container mx-auto px-4">
                 <div className="text-center mb-12">
-                    <h2 className="text-2xl md:text-3xl font-bold text-brand-text-primary mb-3">Bắt đầu chỉ với 3 bước</h2>
+                    <h2 className="text-2xl md:text-3xl font-bold text-brand-text-primary mb-3">{t('stepsTitle')}</h2>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
                     {/* Connecting Line */}
@@ -42,8 +32,8 @@ export default function StepsSection() {
                                     {s.step}
                                 </div>
                             </div>
-                            <h3 className="text-base font-semibold text-brand-text-primary mb-2">{s.title}</h3>
-                            <p className="text-sm text-brand-text-secondary leading-relaxed max-w-xs mx-auto">{s.description}</p>
+                            <h3 className="text-base font-semibold text-brand-text-primary mb-2">{t(s.titleKey)}</h3>
+                            <p className="text-sm text-brand-text-secondary leading-relaxed max-w-xs mx-auto">{t(s.descKey)}</p>
                         </div>
                     ))}
                 </div>

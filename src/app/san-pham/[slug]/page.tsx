@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { useAuth } from '@/lib/auth-context';
-import { formatCurrency } from '@/lib/utils';
+import { useCurrency } from '@/lib/currency';
 import {
     Star, Heart, ShoppingCart, Zap, Clock, Shield, CheckCircle,
     ChevronRight, Package, MessageSquare, Minus, Plus, Store,
@@ -37,6 +37,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     const { slug } = use(params);
     const router = useRouter();
     const { user, updateUser } = useAuth();
+    const { formatVnd: formatCurrency } = useCurrency();
 
     const [product, setProduct] = useState<ProductData | null>(null);
     const [loading, setLoading] = useState(true);

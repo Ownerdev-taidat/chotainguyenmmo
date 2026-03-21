@@ -10,6 +10,7 @@ import {
     Home, Grid3X3, Store, HelpCircle, Search, PlusCircle, Key,
     Star, BookOpen, MessageSquare, HelpingHand
 } from 'lucide-react';
+import { useCurrency } from '@/lib/currency';
 
 const userMenuItems = [
     { icon: LayoutDashboard, label: 'Tổng quan', href: '/dashboard' },
@@ -100,6 +101,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const pathname = usePathname();
     const router = useRouter();
     const { user, logout } = useAuth();
+    const { formatVnd } = useCurrency();
     const [drawerOpen, setDrawerOpen] = useState(false);
     const tabsRef = useRef<HTMLDivElement>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -208,7 +210,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <Link href="/dashboard/vi" className="flex items-center gap-1.5 px-3 py-1.5 text-sm hover:bg-brand-success/20 transition-all">
                                     <Wallet className="w-4 h-4 text-brand-success" />
                                     <span className="text-brand-success font-semibold">
-                                        {(user?.walletBalance || 0).toLocaleString('vi-VN')}đ
+                                        {formatVnd(user?.walletBalance || 0)}
                                     </span>
                                 </Link>
                                 <Link href="/dashboard/nap-tien" className="flex items-center gap-0.5 bg-brand-primary hover:bg-brand-primary/90 text-white px-2 py-1.5 text-[10px] font-medium transition-all">

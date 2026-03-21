@@ -1,25 +1,83 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import ProductCard from '@/components/shared/ProductCard';
-import { products } from '@/lib/mock-data';
+import type { Product } from '@/lib/mock-data';
 import { Search, SlidersHorizontal } from 'lucide-react';
 
 function SearchResults() {
     const searchParams = useSearchParams();
     const query = searchParams.get('q') || '';
+    const categorySlug = searchParams.get('category') || '';
 
-    const filteredProducts = query
-        ? products.filter(p =>
-            p.name.toLowerCase().includes(query.toLowerCase()) ||
-            p.description.toLowerCase().includes(query.toLowerCase()) ||
-            p.categoryName.toLowerCase().includes(query.toLowerCase()) ||
-            p.shopName.toLowerCase().includes(query.toLowerCase())
-        )
-        : products;
+    const [products, setProducts] = useState<Product[]>([]);
+    const [total, setTotal] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [sort, setSort] = useState(searchParams.get('sort') || 'newest');
+
+    useEffect(() => {
+        setLoading(true);
+        const params = new URLSearchParams();
+        if (query) params.set('q', query);
+        if (categorySlug) params.set('category', categorySlug);
+        params.set('sort', sort);
+        params.set('limit', '40');
+
+        fetch(`/api/v1/products?${params.toString()}`)
+            .then(r => r.json())
+            .then(d => {
+                if (d.success && d.data?.products) {
+                    // Map API products to ProductCard's Product interface
+                    const mapped: Product[] = d.data.products.map((p: any) => ({
+                        id: p.id,
+                        name: p.name,
+                        slug: p.slug,
+                        shortDescription: p.shortDescription || '',
+                        description: p.description || '',
+                        price: p.price,
+                        compareAtPrice: p.originalPrice || undefined,
+                        categoryId: p.categoryId || '',
+                        categoryName: p.category?.name || '',
+                        shopId: p.shopId || '',
+                        shopName: p.shop?.name || '',
+                        shopVerified: p.shop?.verified || false,
+                        images: p.images?.map((img: any) => typeof img === 'string' ? img : img.url) || [],
+                        status: p.status || 'ACTIVE',
+                        deliveryType: p.autoDelivery ? 'auto' : 'manual',
+                        stockCount: p.stock ?? 0,
+                        soldCount: p.soldCount || 0,
+                        ratingAverage: p.ratingAverage || 0,
+                        ratingCount: p.ratingCount || 0,
+                        isFeatured: p.isFeatured || false,
+                        isHot: p.isHot || false,
+                        badges: p.autoDelivery ? ['Tự động'] : [],
+                        complaintWindowHours: p.complaintWindowHours || 72,
+                        warrantyPolicy: p.warrantyPolicy || '',
+                        supportPolicy: p.supportPolicy || '',
+                        createdAt: p.createdAt || '',
+                        updatedAt: p.updatedAt || '',
+                    }));
+                    setProducts(mapped);
+                    setTotal(d.data.pagination?.total || mapped.length);
+                } else {
+                    setProducts([]);
+                    setTotal(0);
+                }
+            })
+            .catch(() => { setProducts([]); setTotal(0); })
+            .finally(() => setLoading(false));
+    }, [query, categorySlug, sort]);
+
+    const sortOptions = [
+        { key: 'rating', label: 'Phổ biến' },
+        { key: 'newest', label: 'Mới nhất' },
+        { key: 'price_asc', label: 'Giá thấp' },
+        { key: 'price_desc', label: 'Giá cao' },
+        { key: 'bestselling', label: 'Bán chạy' },
+    ];
 
     return (
         <>
@@ -35,7 +93,7 @@ function SearchResults() {
                             </h1>
                         </div>
                         <p className="text-sm text-brand-text-muted">
-                            Tìm thấy <span className="font-semibold text-brand-primary">{filteredProducts.length}</span> sản phẩm
+                            Tìm thấy <span className="font-semibold text-brand-primary">{total}</span> sản phẩm
                         </p>
                     </div>
 
@@ -45,17 +103,29 @@ function SearchResults() {
                             <SlidersHorizontal className="w-4 h-4" />
                             <span>Sắp xếp:</span>
                         </div>
-                        {['Phổ biến', 'Mới nhất', 'Giá thấp', 'Giá cao', 'Bán chạy'].map((filter) => (
-                            <button key={filter} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-brand-border text-brand-text-secondary hover:border-brand-primary hover:text-brand-primary hover:bg-brand-primary/5 transition-all">
-                                {filter}
+                        {sortOptions.map((opt) => (
+                            <button
+                                key={opt.key}
+                                onClick={() => setSort(opt.key)}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                                    sort === opt.key
+                                        ? 'border-brand-primary text-brand-primary bg-brand-primary/5'
+                                        : 'border-brand-border text-brand-text-secondary hover:border-brand-primary hover:text-brand-primary hover:bg-brand-primary/5'
+                                }`}
+                            >
+                                {opt.label}
                             </button>
                         ))}
                     </div>
 
-                    {/* Results Grid */}
-                    {filteredProducts.length > 0 ? (
+                    {/* Results */}
+                    {loading ? (
+                        <div className="flex justify-center py-20">
+                            <div className="animate-spin w-8 h-8 border-2 border-brand-primary border-t-transparent rounded-full" />
+                        </div>
+                    ) : products.length > 0 ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {filteredProducts.map((product) => (
+                            {products.map((product) => (
                                 <ProductCard key={product.id} product={product} />
                             ))}
                         </div>

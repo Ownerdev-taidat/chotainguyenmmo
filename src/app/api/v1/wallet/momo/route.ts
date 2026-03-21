@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { createMoMoPayment } from '@/lib/momo';
+import prisma from '@/lib/prisma';
 
 // POST /api/v1/wallet/momo — Create MoMo payment
 export async function POST(request: NextRequest) {
@@ -15,19 +16,28 @@ export async function POST(request: NextRequest) {
         }
 
         const orderId = `CTN_MOMO_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const orderInfo = `Nạp ${amount.toLocaleString('vi-VN')}đ vào ví ChoTaiNguyen`;
+        const orderInfo = `Nap tien vao vi ChoTaiNguyen`;
 
-        // Encode userId into extraData so IPN can credit the right wallet
-        const extraData = Buffer.from(JSON.stringify({
-            userId: authResult.userId,
-            amount,
-        })).toString('base64');
+        // Store pending order in DB so IPN can look it up
+        // extraData must be empty string per reference code
+        try {
+            await prisma.deposit.create({
+                data: {
+                    userId: authResult.userId,
+                    amount,
+                    method: 'MOMO',
+                    referenceCode: orderId,
+                    status: 'PENDING',
+                },
+            });
+        } catch (dbErr) {
+            console.warn('[MoMo] Could not store deposit record:', dbErr);
+        }
 
         const result = await createMoMoPayment({
             orderId,
             amount,
             orderInfo,
-            extraData,
         });
 
         return NextResponse.json({

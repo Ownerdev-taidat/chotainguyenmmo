@@ -7,20 +7,16 @@ import { useAuth } from '@/lib/auth-context';
 import {
     Search, Menu, X, Bell, Wallet, Store, User, ChevronDown,
     LogIn, UserPlus, Settings, LogOut, MessageSquare,
-    LayoutDashboard, Package, Heart, Shield, PlusCircle, Clock, CheckCircle, AlertTriangle
+    LayoutDashboard, Package, Heart, Shield, PlusCircle, Clock, CheckCircle, AlertTriangle, Globe
 } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
+import { useCurrency } from '@/lib/currency';
 
-// Mock notifications
-const MOCK_NOTIFICATIONS = [
-    { id: 1, type: 'order', title: 'Đơn hàng đã hoàn tất', desc: 'Đơn hàng CTN-20260301-001 đã được giao thành công.', time: '5 phút trước', read: false, icon: CheckCircle, color: 'text-brand-success' },
-    { id: 2, type: 'deposit', title: 'Nạp tiền thành công', desc: 'Yêu cầu nạp 1.000.000đ đã được duyệt và cộng vào ví.', time: '1 giờ trước', read: false, icon: PlusCircle, color: 'text-brand-primary' },
-    { id: 3, type: 'delivery', title: 'Giao hàng thành công', desc: 'Đơn hàng CTN-20260305-003 đã được giao tự động.', time: '3 giờ trước', read: true, icon: Package, color: 'text-brand-info' },
-    { id: 4, type: 'system', title: 'Cập nhật tính năng', desc: 'Hệ thống vừa cập nhật giao diện Seller Center mới.', time: '1 ngày trước', read: true, icon: Bell, color: 'text-brand-secondary' },
-    { id: 5, type: 'complaint', title: 'Khiếu nại mới', desc: 'Có 1 khiếu nại mới cần xử lý cho đơn hàng CTN-20260228-007.', time: '2 ngày trước', read: true, icon: AlertTriangle, color: 'text-brand-warning' },
-];
 
 export default function Header() {
     const { user, logout, isLoading } = useAuth();
+    const { locale, setLocale, t } = useI18n();
+    const { formatVnd } = useCurrency();
     const router = useRouter();
     const pathname = usePathname();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -84,41 +80,119 @@ export default function Header() {
         return '/dashboard';
     };
 
-    const unreadCount = MOCK_NOTIFICATIONS.filter(n => !n.read).length;
+    // Real notifications from API
+    const [notifications, setNotifications] = useState<{ id: string; type: string; title: string; message: string; link?: string; isRead: boolean; createdAt: string }[]>([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    const notifTypeConfig: Record<string, { icon: typeof CheckCircle; color: string }> = {
+        ORDER: { icon: CheckCircle, color: 'text-brand-success' },
+        DEPOSIT: { icon: PlusCircle, color: 'text-brand-primary' },
+        DELIVERY: { icon: Package, color: 'text-brand-info' },
+        SYSTEM: { icon: Bell, color: 'text-brand-secondary' },
+        COMPLAINT: { icon: AlertTriangle, color: 'text-brand-warning' },
+        REVIEW: { icon: Heart, color: 'text-brand-warning' },
+        WITHDRAWAL: { icon: Wallet, color: 'text-brand-success' },
+    };
+
+    const fetchNotifications = async () => {
+        try {
+            const res = await fetch('/api/v1/notifications?limit=10');
+            const data = await res.json();
+            if (data.success) {
+                setNotifications(data.data.notifications || []);
+                setUnreadCount(data.data.unreadCount || 0);
+            }
+        } catch {}
+    };
+
+    // Fetch notifications when user is logged in
+    useEffect(() => {
+        if (user) {
+            fetchNotifications();
+            // Poll every 60 seconds for new notifications
+            const interval = setInterval(fetchNotifications, 60000);
+            return () => clearInterval(interval);
+        }
+    }, [user]);
+
+    const handleMarkAllRead = async () => {
+        try {
+            await fetch('/api/v1/notifications', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ markAll: true }),
+            });
+            setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+            setUnreadCount(0);
+        } catch {}
+    };
+
+    const formatTimeAgo = (dateStr: string) => {
+        const diff = Date.now() - new Date(dateStr).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return locale === 'vi' ? 'Vừa xong' : 'Just now';
+        if (mins < 60) return locale === 'vi' ? `${mins} phút trước` : `${mins}m ago`;
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return locale === 'vi' ? `${hours} giờ trước` : `${hours}h ago`;
+        const days = Math.floor(hours / 24);
+        return locale === 'vi' ? `${days} ngày trước` : `${days}d ago`;
+    };
+
+    // Unread messages count
+    const [unreadMessages, setUnreadMessages] = useState(0);
+
+    const fetchUnreadMessages = async () => {
+        try {
+            const res = await fetch('/api/v1/conversations');
+            const data = await res.json();
+            if (data.success && Array.isArray(data.data)) {
+                const total = data.data.reduce((sum: number, c: any) => sum + (c.unread || 0), 0);
+                setUnreadMessages(total);
+            }
+        } catch {}
+    };
+
+    useEffect(() => {
+        if (user) {
+            fetchUnreadMessages();
+            const interval = setInterval(fetchUnreadMessages, 60000);
+            return () => clearInterval(interval);
+        }
+    }, [user]);
 
     // Navigation items with optional dropdowns
     const navItems: { label: string; href: string; dropdown?: { label: string; href: string; icon: string }[] }[] = [
-        { label: 'Trang chủ', href: '/' },
+        { label: t('home'), href: '/' },
         {
-            label: 'Danh mục', href: '/danh-muc',
+            label: t('categories'), href: '/danh-muc',
             dropdown: [
-                { label: 'Tài khoản Premium', href: '/danh-muc/tai-khoan-premium', icon: '👑' },
-                { label: 'Key & License', href: '/danh-muc/key-license', icon: '🔑' },
-                { label: 'Phần mềm', href: '/danh-muc/phan-mem', icon: '💻' },
-                { label: 'Game', href: '/danh-muc/game', icon: '🎮' },
-                { label: 'Social Media', href: '/danh-muc/social-media', icon: '📱' },
-                { label: 'AI & Tools', href: '/danh-muc/ai-tools', icon: '🤖' },
-                { label: 'Xem tất cả →', href: '/danh-muc', icon: '📦' },
+                { label: t('premiumAccounts'), href: '/danh-muc/tai-khoan-premium', icon: '👑' },
+                { label: t('keyLicense'), href: '/danh-muc/key-license', icon: '🔑' },
+                { label: t('software'), href: '/danh-muc/phan-mem', icon: '💻' },
+                { label: t('game'), href: '/danh-muc/game', icon: '🎮' },
+                { label: t('socialMedia'), href: '/danh-muc/social-media', icon: '📱' },
+                { label: t('aiTools'), href: '/danh-muc/ai-tools', icon: '🤖' },
+                { label: t('viewAll'), href: '/danh-muc', icon: '📦' },
             ],
         },
         {
-            label: 'Sản phẩm', href: '/san-pham-noi-bat',
+            label: t('products'), href: '/san-pham-noi-bat',
             dropdown: [
-                { label: 'Sản phẩm nổi bật', href: '/san-pham-noi-bat', icon: '⭐' },
-                { label: 'Mới nhất', href: '/san-pham?sort=newest', icon: '🆕' },
-                { label: 'Bán chạy nhất', href: '/san-pham?sort=best-selling', icon: '🔥' },
-                { label: 'Giá tốt nhất', href: '/san-pham?sort=price-low', icon: '💰' },
+                { label: t('featuredProducts'), href: '/san-pham-noi-bat', icon: '⭐' },
+                { label: t('newest'), href: '/san-pham?sort=newest', icon: '🆕' },
+                { label: t('bestSelling'), href: '/san-pham?sort=bestselling', icon: '🔥' },
+                { label: t('bestPrice'), href: '/san-pham?sort=price_asc', icon: '💰' },
             ],
         },
-        { label: 'Gian hàng', href: '/gian-hang' },
-        { label: 'Nạp tiền', href: '/dashboard/nap-tien' },
+        { label: t('shops'), href: '/gian-hang' },
+        { label: t('deposit'), href: '/dashboard/nap-tien' },
         {
-            label: 'Hỗ trợ', href: '/ho-tro',
+            label: t('support'), href: '/ho-tro',
             dropdown: [
-                { label: 'Hướng dẫn mua hàng', href: '/huong-dan', icon: '📖' },
-                { label: 'Câu hỏi thường gặp', href: '/faqs', icon: '❓' },
-                { label: 'Liên hệ hỗ trợ', href: '/ho-tro', icon: '💬' },
-                { label: 'Chính sách bảo hành', href: '/chinh-sach', icon: '🛡️' },
+                { label: t('buyingGuide'), href: '/huong-dan', icon: '📖' },
+                { label: t('faq'), href: '/faqs', icon: '❓' },
+                { label: t('contactSupport'), href: '/ho-tro', icon: '💬' },
+                { label: t('warrantyPolicy'), href: '/chinh-sach', icon: '🛡️' },
             ],
         },
     ];
@@ -128,7 +202,7 @@ export default function Header() {
             {/* Announcement Bar */}
             <div className="bg-gradient-to-r from-brand-primary/10 to-brand-secondary/10 border-b border-brand-border/50">
                 <div className="max-w-container mx-auto px-4 py-1.5 text-center text-xs text-brand-text-secondary">
-                    🚀 Hệ thống đang hoạt động ổn định — Khám phá <span className="text-brand-primary font-medium">tính năng Seller Center mới</span>
+                    {t('announcement')} <span className="text-brand-primary font-medium">{t('announcementHighlight')}</span>
                 </div>
             </div>
 
@@ -141,20 +215,20 @@ export default function Header() {
                     </Link>
 
                     {/* Search — hidden on mobile, shown on md+ */}
-                    <form onSubmit={handleSearch} className="flex-1 max-w-2xl mx-auto relative hidden md:block">
+                    <form onSubmit={handleSearch} className="max-w-md w-full relative hidden md:block">
                         <div className={`flex items-center bg-brand-surface-2 border rounded-xl transition-all duration-200 ${searchFocused ? 'border-brand-primary ring-1 ring-brand-primary/30' : 'border-brand-border'}`}>
                             <Search className="w-4 h-4 text-brand-text-muted ml-4" />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Tìm kiếm sản phẩm, gian hàng hoặc danh mục..."
+                                placeholder={t('searchPlaceholder')}
                                 className="flex-1 bg-transparent border-none outline-none px-3 py-2.5 text-sm text-brand-text-primary placeholder:text-brand-text-muted"
                                 onFocus={() => setSearchFocused(true)}
                                 onBlur={() => setSearchFocused(false)}
                             />
-                            <button type="submit" className="bg-brand-primary text-white text-sm font-medium px-4 py-1.5 rounded-lg mr-1.5 hover:brightness-110 transition-all">
-                                Tìm kiếm
+                            <button type="submit" className="bg-brand-primary text-white text-sm font-medium px-4 py-1.5 rounded-lg mr-1.5 hover:brightness-110 transition-all whitespace-nowrap" style={{ minWidth: '70px' }}>
+                                {t('searchButton')}
                             </button>
                         </div>
                     </form>
@@ -168,7 +242,7 @@ export default function Header() {
                                 </Link>
                                 <Link href="/dashboard/nap-tien" className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-brand-primary/10 text-brand-primary" title="Ví tiền">
                                     <Wallet className="w-3.5 h-3.5" />
-                                    <span>{(user?.walletBalance || 0).toLocaleString('vi-VN')}đ</span>
+                                    <span>{formatVnd(user?.walletBalance || 0)}</span>
                                 </Link>
                                 {/* Mobile Profile Avatar */}
                                 <div className="relative" ref={mobileProfileRef}>
@@ -203,7 +277,7 @@ export default function Header() {
                                             <Link href="/dashboard/nap-tien" onClick={() => setMobileProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
                                                 <Wallet className="w-4 h-4 text-brand-primary" />
                                                 <span>Nạp tiền</span>
-                                                <span className="ml-auto text-xs font-semibold text-brand-success">{(user.walletBalance || 0).toLocaleString('vi-VN')}đ</span>
+                                                <span className="ml-auto text-xs font-semibold text-brand-success">{formatVnd(user.walletBalance || 0)}</span>
                                             </Link>
                                             <Link href="/dashboard/don-hang" onClick={() => setMobileProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
                                                 <Package className="w-4 h-4" /> Lịch sử mua hàng
@@ -227,25 +301,42 @@ export default function Header() {
                     </div>
 
                     {/* Desktop Actions */}
-                    <div className="header-actions hidden lg:flex items-center gap-1">
-                        <Link href="/seller" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-all">
+                    <div className="header-actions hidden lg:flex items-center gap-1.5 ml-auto">
+                        {/* Language Toggle */}
+                        <button
+                            onClick={() => setLocale(locale === 'vi' ? 'en' : 'vi')}
+                            className="flex items-center gap-1.5 px-2 py-2 rounded-xl text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-all"
+                            title={locale === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'}
+                        >
+                            {locale === 'vi' ? (
+                                <svg className="w-5 h-4 rounded-sm shrink-0" viewBox="0 0 30 20"><rect width="30" height="20" fill="#DA251D"/><polygon points="15,4 16.8,9.5 22.5,9.5 17.8,12.8 19.5,18.5 15,15.2 10.5,18.5 12.2,12.8 7.5,9.5 13.2,9.5" fill="#FFFF00"/></svg>
+                            ) : (
+                                <svg className="w-5 h-4 rounded-sm shrink-0" viewBox="0 0 30 20"><rect width="30" height="20" fill="#FFF"/><rect y="0" width="30" height="1.54" fill="#B22234"/><rect y="3.08" width="30" height="1.54" fill="#B22234"/><rect y="6.15" width="30" height="1.54" fill="#B22234"/><rect y="9.23" width="30" height="1.54" fill="#B22234"/><rect y="12.31" width="30" height="1.54" fill="#B22234"/><rect y="15.38" width="30" height="1.54" fill="#B22234"/><rect y="18.46" width="30" height="1.54" fill="#B22234"/><rect width="12" height="10.77" fill="#3C3B6E"/></svg>
+                            )}
+                            <span className="text-sm font-medium" style={{ minWidth: '20px', textAlign: 'center' }}>{locale === 'vi' ? 'VN' : 'EN'}</span>
+                        </button>
+
+                        <Link href="/seller" className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-all whitespace-nowrap" style={{ minWidth: '120px' }}>
                             <Store className="w-4 h-4" />
-                            <span>Seller Center</span>
+                            <span>{t('sellerCenter')}</span>
                         </Link>
 
-                        {/* Fixed-width container for auth actions to prevent horizontal shift */}
-                        <div className="flex items-center gap-1 justify-end" style={{ minWidth: '220px' }}>
+
+                        {/* Auth actions */}
+                        <div className="flex items-center gap-1.5">
                         {!isLoading && user ? (
                             <>
-                                {/* Messaging Icon — prominent */}
-                                <Link href="/dashboard/tin-nhan" className="relative p-2.5 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 transition-all" title="Tin nhắn">
+                                {/* Messaging Icon */}
+                                <Link href="/dashboard/tin-nhan" className="relative p-2 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 transition-all" title="Tin nhắn">
                                     <MessageSquare className="w-5 h-5" />
-                                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] bg-brand-danger text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">3</span>
+                                    {unreadMessages > 0 && (
+                                        <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] bg-brand-danger text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">{unreadMessages}</span>
+                                    )}
                                 </Link>
 
-                                <Link href="/dashboard/nap-tien" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-brand-primary/10 to-brand-success/10 border border-brand-primary/20 text-brand-primary hover:from-brand-primary/20 hover:to-brand-success/20 transition-all" title="Ví tiền">
+                                <Link href="/dashboard/nap-tien" className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-brand-primary/10 to-brand-success/10 border border-brand-primary/20 text-brand-primary hover:from-brand-primary/20 hover:to-brand-success/20 transition-all" title="Ví tiền" style={{ minWidth: '110px' }}>
                                     <Wallet className="w-4 h-4" />
-                                    <span>{(user?.walletBalance || 0).toLocaleString('vi-VN')}đ</span>
+                                    <span>{formatVnd(user?.walletBalance || 0)}</span>
                                 </Link>
 
                                 {/* Notification Bell */}
@@ -264,30 +355,40 @@ export default function Header() {
                                     {notifOpen && (
                                         <div className="absolute right-0 top-full mt-2 w-80 bg-brand-surface border border-brand-border rounded-xl shadow-card-hover z-50 overflow-hidden">
                                             <div className="px-4 py-3 border-b border-brand-border flex items-center justify-between">
-                                                <span className="text-sm font-semibold text-brand-text-primary">Thông báo</span>
-                                                <span className="text-[11px] text-brand-primary cursor-pointer hover:underline">Đánh dấu đã đọc</span>
+                                                <span className="text-sm font-semibold text-brand-text-primary">{t('notifications')}</span>
+                                                {unreadCount > 0 && (
+                                                    <span onClick={handleMarkAllRead} className="text-[11px] text-brand-primary cursor-pointer hover:underline">{t('markAsRead')}</span>
+                                                )}
                                             </div>
                                             <div className="max-h-80 overflow-y-auto">
-                                                {MOCK_NOTIFICATIONS.map((notif) => (
-                                                    <div key={notif.id} className={`px-4 py-3 border-b border-brand-border/50 hover:bg-brand-surface-2 cursor-pointer transition-colors ${!notif.read ? 'bg-brand-primary/5' : ''}`}>
-                                                        <div className="flex gap-3">
-                                                            <div className={`mt-0.5 ${notif.color}`}>
-                                                                <notif.icon className="w-4 h-4" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-sm font-medium text-brand-text-primary">{notif.title}</p>
-                                                                <p className="text-xs text-brand-text-muted mt-0.5 line-clamp-2">{notif.desc}</p>
-                                                                <div className="flex items-center gap-1 mt-1">
-                                                                    <Clock className="w-3 h-3 text-brand-text-muted" />
-                                                                    <span className="text-[10px] text-brand-text-muted">{notif.time}</span>
+                                                {notifications.length === 0 ? (
+                                                    <div className="px-4 py-8 text-center text-sm text-brand-text-muted">
+                                                        {locale === 'vi' ? 'Chưa có thông báo nào' : 'No notifications yet'}
+                                                    </div>
+                                                ) : notifications.map((notif) => {
+                                                    const config = notifTypeConfig[notif.type] || { icon: Bell, color: 'text-brand-text-muted' };
+                                                    const NotifIcon = config.icon;
+                                                    return (
+                                                        <div key={notif.id} onClick={() => notif.link && router.push(notif.link)} className={`px-4 py-3 border-b border-brand-border/50 hover:bg-brand-surface-2 cursor-pointer transition-colors ${!notif.isRead ? 'bg-brand-primary/5' : ''}`}>
+                                                            <div className="flex gap-3">
+                                                                <div className={`mt-0.5 ${config.color}`}>
+                                                                    <NotifIcon className="w-4 h-4" />
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-medium text-brand-text-primary">{notif.title}</p>
+                                                                    <p className="text-xs text-brand-text-muted mt-0.5 line-clamp-2">{notif.message}</p>
+                                                                    <div className="flex items-center gap-1 mt-1">
+                                                                        <Clock className="w-3 h-3 text-brand-text-muted" />
+                                                                        <span className="text-[10px] text-brand-text-muted">{formatTimeAgo(notif.createdAt)}</span>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                             <Link href="/dashboard/thong-bao" onClick={() => setNotifOpen(false)} className="block text-center py-2.5 text-sm text-brand-primary font-medium hover:bg-brand-surface-2 transition-colors">
-                                                Xem tất cả thông báo
+                                                {t('viewAllNotifications')}
                                             </Link>
                                         </div>
                                     )}
@@ -322,23 +423,23 @@ export default function Header() {
                                                     </span>
                                                 )}
                                             </div>
-                                            <Link href={getDashboardLink()} onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2">
-                                                <LayoutDashboard className="w-4 h-4" /> Bảng điều khiển
+                                            <Link href={getDashboardLink()} onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
+                                                <LayoutDashboard className="w-4 h-4" /> {t('dashboard')}
                                             </Link>
-                                            <Link href="/dashboard/vi" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2">
+                                            <Link href="/dashboard/vi" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
                                                 <Wallet className="w-4 h-4 text-brand-success" />
-                                                <span>Ví của tôi</span>
-                                                <span className="ml-auto text-xs font-semibold text-brand-success">{(user.walletBalance || 0).toLocaleString('vi-VN')}đ</span>
+                                                <span>{t('myWallet')}</span>
+                                                <span className="ml-auto text-xs font-semibold text-brand-success">{formatVnd(user.walletBalance || 0)}</span>
                                             </Link>
-                                            <Link href="/dashboard/don-hang" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2">
-                                                <Package className="w-4 h-4" /> Lịch sử mua hàng
+                                            <Link href="/dashboard/don-hang" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
+                                                <Package className="w-4 h-4" /> {t('orderHistory')}
                                             </Link>
-                                            <Link href="/dashboard/ho-so" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2">
-                                                <Settings className="w-4 h-4" /> Hồ sơ
+                                            <Link href="/dashboard/ho-so" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2 transition-colors">
+                                                <Settings className="w-4 h-4" /> {t('profile')}
                                             </Link>
                                             <div className="border-t border-brand-border my-1" />
                                             <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-danger hover:bg-brand-surface-2 w-full">
-                                                <LogOut className="w-4 h-4" /> Đăng xuất
+                                                <LogOut className="w-4 h-4" /> {t('logout')}
                                             </button>
                                         </div>
                                     )}
@@ -347,10 +448,10 @@ export default function Header() {
                         ) : !isLoading ? (
                             <div className="flex items-center gap-2">
                                 <Link href="/dang-nhap" className="btn-secondary !px-4 !py-2 text-sm flex items-center gap-1.5">
-                                    <LogIn className="w-4 h-4" /> Đăng nhập
+                                    <LogIn className="w-4 h-4" /> {t('login')}
                                 </Link>
                                 <Link href="/dang-ky" className="btn-primary !px-4 !py-2 text-sm flex items-center gap-1.5">
-                                    <UserPlus className="w-4 h-4" /> Đăng ký
+                                    <UserPlus className="w-4 h-4" /> {t('register')}
                                 </Link>
                             </div>
                         ) : (
@@ -382,13 +483,13 @@ export default function Header() {
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Tìm kiếm sản phẩm..."
+                            placeholder={t('searchPlaceholderMobile')}
                             className="flex-1 bg-transparent border-none outline-none px-2 py-2 text-sm text-brand-text-primary placeholder:text-brand-text-muted"
                             onFocus={() => setSearchFocused(true)}
                             onBlur={() => setSearchFocused(false)}
                         />
-                        <button type="submit" className="bg-brand-primary text-white text-xs font-medium px-3 py-1 rounded-lg mr-1 hover:brightness-110 transition-all">
-                            Tìm
+                        <button type="submit" className="bg-brand-primary text-white text-xs font-medium px-3 py-1 rounded-lg mr-1 hover:brightness-110 transition-all whitespace-nowrap">
+                            {t('searchButtonMobile')}
                         </button>
                     </div>
                 </form>
@@ -408,7 +509,8 @@ export default function Header() {
                             >
                                 <Link
                                     href={item.href}
-                                    className={`px-3 py-1.5 text-sm rounded-lg transition-all flex items-center gap-1 ${isActive ? 'text-brand-primary font-semibold bg-brand-primary/10' : 'text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2'}`}
+                                    className={`px-3 py-1.5 text-sm rounded-lg transition-all flex items-center justify-center gap-1 whitespace-nowrap ${isActive ? 'text-brand-primary font-semibold bg-brand-primary/10' : 'text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2'}`}
+                                    style={{ minWidth: '85px' }}
                                 >
                                     {item.label}
                                     {hasDropdown && <ChevronDown className={`w-3 h-3 transition-transform ${activeDropdown === item.label ? 'rotate-180' : ''}`} />}
@@ -468,6 +570,22 @@ export default function Header() {
                                 )}
                             </div>
                         ))}
+
+                        {/* Language Toggle for mobile */}
+                        <div className="border-t border-brand-border pt-2 mt-1">
+                            <button
+                                onClick={() => { setLocale(locale === 'vi' ? 'en' : 'vi'); setMobileMenuOpen(false); }}
+                                className="flex items-center gap-2 py-2 text-brand-text-secondary hover:text-brand-text-primary font-medium w-full"
+                            >
+                                {locale === 'vi' ? (
+                                    <svg className="w-5 h-4 rounded-sm shrink-0" viewBox="0 0 30 20"><rect width="30" height="20" fill="#FFF"/><rect y="0" width="30" height="1.54" fill="#B22234"/><rect y="3.08" width="30" height="1.54" fill="#B22234"/><rect y="6.15" width="30" height="1.54" fill="#B22234"/><rect y="9.23" width="30" height="1.54" fill="#B22234"/><rect y="12.31" width="30" height="1.54" fill="#B22234"/><rect y="15.38" width="30" height="1.54" fill="#B22234"/><rect y="18.46" width="30" height="1.54" fill="#B22234"/><rect width="12" height="10.77" fill="#3C3B6E"/></svg>
+                                ) : (
+                                    <svg className="w-5 h-4 rounded-sm shrink-0" viewBox="0 0 30 20"><rect width="30" height="20" fill="#DA251D"/><polygon points="15,4 16.8,9.5 22.5,9.5 17.8,12.8 19.5,18.5 15,15.2 10.5,18.5 12.2,12.8 7.5,9.5 13.2,9.5" fill="#FFFF00"/></svg>
+                                )}
+                                <span>{locale === 'vi' ? 'English' : 'Tiếng Việt'}</span>
+                                <span className="ml-auto text-xs font-medium text-brand-primary">{locale === 'vi' ? 'VN' : 'EN'}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

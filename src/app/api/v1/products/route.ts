@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
         const page = parseInt(searchParams.get('page') || '1');
-        const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
+        const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 60);
         const category = searchParams.get('category');
         const shop = searchParams.get('shop');
         const search = searchParams.get('q');
@@ -25,21 +25,60 @@ export async function GET(request: NextRequest) {
             where.shop = { slug: shop };
         }
         if (search) {
-            where.OR = [
-                { name: { contains: search, mode: 'insensitive' } },
-                { shortDescription: { contains: search, mode: 'insensitive' } },
-            ];
+            const searchTrimmed = search.trim();
+            const searchNoSpaces = searchTrimmed.replace(/\s+/g, '').toLowerCase();
+            const words = searchTrimmed.split(/\s+/).filter(Boolean);
+
+            if (words.length > 1) {
+                // Multiple words: each word must appear in name, description, or category
+                where.AND = words.map((word: string) => ({
+                    OR: [
+                        { name: { contains: word, mode: 'insensitive' } },
+                        { shortDescription: { contains: word, mode: 'insensitive' } },
+                        { category: { name: { contains: word, mode: 'insensitive' } } },
+                    ],
+                }));
+            } else {
+                // Single word: try both normal contains AND space-stripped matching via raw filter
+                // Use Prisma raw filter to check REPLACE(LOWER(name), ' ', '') LIKE '%searchnospaces%'
+                where.OR = [
+                    { name: { contains: searchTrimmed, mode: 'insensitive' } },
+                    { shortDescription: { contains: searchTrimmed, mode: 'insensitive' } },
+                    { category: { name: { contains: searchTrimmed, mode: 'insensitive' } } },
+                ];
+
+                // Also find IDs via raw SQL for space-stripped matching
+                try {
+                    const rawIds: { id: string }[] = await prisma.$queryRawUnsafe(
+                        `SELECT id FROM "Product" WHERE status = 'ACTIVE' AND (
+                            LOWER(REPLACE(name, ' ', '')) LIKE $1 OR
+                            LOWER(REPLACE(COALESCE("shortDescription", ''), ' ', '')) LIKE $1
+                        ) LIMIT $2`,
+                        `%${searchNoSpaces}%`,
+                        limit
+                    );
+                    if (rawIds.length > 0) {
+                        // Merge: OR with id-based matches
+                        (where.OR as any[]).push({ id: { in: rawIds.map(r => r.id) } });
+                    }
+                } catch { /* ignore raw query errors, fall back to normal search */ }
+            }
         }
         if (minPrice) where.price = { ...((where.price as object) || {}), gte: parseInt(minPrice) };
         if (maxPrice) where.price = { ...((where.price as object) || {}), lte: parseInt(maxPrice) };
         if (featured === 'true') where.isFeatured = true;
 
         // Sort
-        let orderBy: Record<string, string> = { createdAt: 'desc' };
+        let orderBy: Record<string, string> | Record<string, string>[] = { createdAt: 'desc' };
         if (sort === 'price_asc') orderBy = { price: 'asc' };
         else if (sort === 'price_desc') orderBy = { price: 'desc' };
         else if (sort === 'bestselling') orderBy = { soldCount: 'desc' };
         else if (sort === 'rating') orderBy = { ratingAverage: 'desc' };
+        else if (sort === 'homepage') orderBy = [
+            { ratingAverage: 'desc' },
+            { soldCount: 'desc' },
+            { ratingCount: 'desc' },
+        ];
 
         const [products, total] = await Promise.all([
             prisma.product.findMany({
@@ -76,3 +115,4 @@ export async function GET(request: NextRequest) {
         );
     }
 }
+

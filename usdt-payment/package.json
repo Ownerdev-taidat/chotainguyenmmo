@@ -1,0 +1,28 @@
+{
+  "name": "usdt-payment-system",
+  "version": "1.0.0",
+  "description": "Watch-only USDT payment system (TRC20 + BEP20)",
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "ts-node src/server.ts",
+    "start": "ts-node src/server.ts",
+    "build": "tsc",
+    "prisma:push": "npx prisma db push",
+    "prisma:generate": "npx prisma generate",
+    "reconcile": "ts-node -e \"require('./src/jobs/reconciliation.job').runReconciliation().then(console.log)\""
+  },
+  "dependencies": {
+    "@prisma/client": "^5.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.0",
+    "prisma": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.0",
+    "@types/express": "^4.17.0",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.0.0",
+    "typescript": "^5.0.0"
+  }
+}

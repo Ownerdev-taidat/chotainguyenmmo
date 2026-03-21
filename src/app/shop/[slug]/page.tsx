@@ -8,8 +8,8 @@ import {
     CheckCircle, Star, Package, ShieldCheck, MessageSquare, Calendar,
     ChevronDown, Loader2, AlertCircle, Store, ExternalLink, AlertTriangle, User
 } from 'lucide-react';
+import { useCurrency } from '@/lib/currency';
 
-function formatCurrency(n: number) { return n.toLocaleString('vi-VN') + 'đ'; }
 function timeAgo(d: string) {
     const diff = Date.now() - new Date(d).getTime();
     const days = Math.floor(diff / 86400000);
@@ -21,6 +21,7 @@ function timeAgo(d: string) {
 
 export default function ShopPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = use(params);
+    const { formatVnd: formatCurrency } = useCurrency();
     const [shop, setShop] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');

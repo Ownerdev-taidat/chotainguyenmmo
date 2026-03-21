@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Package, Star, Megaphone, ChevronRight } from 'lucide-react';
-
-function formatCurrency(n: number) { return n.toLocaleString('vi-VN') + 'đ'; }
+import { useI18n } from '@/lib/i18n';
+import { useCurrency } from '@/lib/currency';
 
 export default function SponsoredSidebar() {
+    const { t } = useI18n();
+    const { formatVnd: formatCurrency } = useCurrency();
     const [ads, setAds] = useState<any[]>([]);
 
     useEffect(() => {
@@ -23,7 +25,7 @@ export default function SponsoredSidebar() {
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                     <Megaphone className="w-4 h-4 text-brand-primary" />
-                    <h2 className="text-base font-bold text-brand-text-primary">Sản phẩm tài trợ</h2>
+                    <h2 className="text-base font-bold text-brand-text-primary">{t('sponsoredProducts')}</h2>
                 </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -45,14 +47,14 @@ export default function SponsoredSidebar() {
                                     )}
                                 </div>
                                 <span className="absolute top-1.5 left-1.5 text-[9px] bg-brand-primary/90 text-white px-1.5 py-0.5 rounded-full flex items-center gap-0.5 font-medium">
-                                    <Star className="w-2.5 h-2.5 fill-white" /> Tài trợ
+                                    <Star className="w-2.5 h-2.5 fill-white" /> {t('sponsored')}
                                 </span>
                             </div>
                             <div className="p-2.5">
                                 <h4 className="text-xs font-medium text-brand-text-primary line-clamp-2 mb-1 leading-snug">{p.name}</h4>
                                 <div className="text-sm font-bold text-brand-primary">{formatCurrency(minPrice)}</div>
                                 <div className="text-[10px] text-brand-text-muted mt-0.5">
-                                    {p.shop?.name} · Đã bán {p.soldCount}
+                                    {p.shop?.name} · {t('sold')} {p.soldCount}
                                 </div>
                             </div>
                         </Link>

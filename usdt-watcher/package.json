@@ -1,0 +1,22 @@
+{
+  "name": "usdt-watcher",
+  "version": "1.0.0",
+  "description": "USDT blockchain watcher for ChoTaiNguyen",
+  "scripts": {
+    "start": "npx ts-node index.ts",
+    "dev": "npx ts-node --watch index.ts"
+  },
+  "prisma": {
+    "schema": "./prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.2",
+    "prisma": "^6.19.2",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "ts-node": "^10.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

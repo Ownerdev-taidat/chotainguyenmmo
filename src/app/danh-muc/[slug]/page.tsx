@@ -1,31 +1,101 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { use } from 'react';
 import Link from 'next/link';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
-import ProductCard from '@/components/shared/ProductCard';
-import { products, categories } from '@/lib/mock-data';
-import { SlidersHorizontal, ChevronDown, X } from 'lucide-react';
+import { ShoppingCart, Star, Zap, Eye, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
+
+const PRODUCTS_PER_PAGE = 60;
+
+interface ApiCategory {
+    id: string;
+    name: string;
+    slug: string;
+    icon: string | null;
+    _count: { products: number };
+}
+
+interface ApiProduct {
+    id: string;
+    name: string;
+    slug: string;
+    price: number;
+    soldCount: number;
+    ratingAverage: number;
+    stockCountCached: number;
+    deliveryType: string;
+    isFeatured: boolean;
+    category?: { name: string; slug: string };
+    shop?: { name: string; slug: string; verified: boolean };
+    images?: { url: string }[];
+}
 
 export default function CategoryPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = use(params);
-    const [sortBy, setSortBy] = useState('newest');
-    const [showFilters, setShowFilters] = useState(false);
+    const [sortBy, setSortBy] = useState('bestselling');
+    const [categories, setCategories] = useState<ApiCategory[]>([]);
+    const [products, setProducts] = useState<ApiProduct[]>([]);
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [loading, setLoading] = useState(true);
 
-    const category = categories.find(c => c.slug === slug);
-    const categoryProducts = category
-        ? products.filter(p => p.categoryId === category.id)
-        : products;
+    const currentCategory = categories.find(c => c.slug === slug);
 
-    const displayProducts = [...categoryProducts].sort((a, b) => {
-        if (sortBy === 'price-low') return a.price - b.price;
-        if (sortBy === 'price-high') return b.price - a.price;
-        if (sortBy === 'best-selling') return b.soldCount - a.soldCount;
-        if (sortBy === 'rating') return b.ratingAverage - a.ratingAverage;
-        return 0;
-    });
+    // Fetch categories for sidebar
+    useEffect(() => {
+        fetch('/api/v1/categories')
+            .then(r => r.json())
+            .then(d => { if (d.success) setCategories(d.data || []); })
+            .catch(() => {});
+    }, []);
+
+    // Fetch products for current category
+    const fetchProducts = useCallback(async (p: number, sort: string) => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/v1/products?category=${slug}&page=${p}&limit=${PRODUCTS_PER_PAGE}&sort=${sort}`);
+            const data = await res.json();
+            if (data.success) {
+                setProducts(data.data.products || []);
+                setTotalPages(data.data.pagination.totalPages || 1);
+                setTotal(data.data.pagination.total || 0);
+            }
+        } catch { }
+        setLoading(false);
+    }, [slug]);
+
+    useEffect(() => {
+        setPage(1);
+        fetchProducts(1, sortBy);
+    }, [slug, sortBy, fetchProducts]);
+
+    useEffect(() => {
+        fetchProducts(page, sortBy);
+    }, [page]);
+
+    const goToPage = (p: number) => {
+        if (p < 1 || p > totalPages) return;
+        setPage(p);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const getPageNumbers = () => {
+        const pages: (number | '...')[] = [];
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            if (page > 3) pages.push('...');
+            for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
+            if (page < totalPages - 2) pages.push('...');
+            pages.push(totalPages);
+        }
+        return pages;
+    };
 
     return (
         <>
@@ -37,81 +107,33 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
                         <Link href="/" className="hover:text-brand-primary transition-colors">Trang chủ</Link>
                         <span>/</span>
                         <Link href="/danh-muc" className="hover:text-brand-primary transition-colors">Danh mục</Link>
-                        {category && (
+                        {currentCategory && (
                             <>
                                 <span>/</span>
-                                <span className="text-brand-text-primary">{category.name}</span>
+                                <span className="text-brand-text-primary">{currentCategory.name}</span>
                             </>
                         )}
                     </nav>
 
                     <div className="flex gap-6">
-                        {/* Filter Sidebar - Desktop */}
+                        {/* Filter Sidebar - Categories from API */}
                         <aside className="hidden lg:block w-72 shrink-0">
                             <div className="card sticky top-32 space-y-6">
-                                <h3 className="text-sm font-semibold text-brand-text-primary">Bộ lọc</h3>
-
-                                {/* Categories */}
-                                <div>
-                                    <h4 className="text-xs font-medium text-brand-text-muted mb-3 uppercase tracking-wider">Danh mục</h4>
-                                    <div className="space-y-2">
-                                        {categories.map(cat => (
-                                            <Link
-                                                key={cat.id}
-                                                href={`/danh-muc/${cat.slug}`}
-                                                className={`flex items-center justify-between text-sm py-1.5 px-2 rounded-lg transition-colors ${category?.id === cat.id
-                                                    ? 'bg-brand-primary/10 text-brand-primary font-medium'
-                                                    : 'text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2'
-                                                    }`}
-                                            >
-                                                <span>{cat.name}</span>
-                                                <span className="text-xs text-brand-text-muted">{cat.productCount}</span>
-                                            </Link>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Price Range */}
-                                <div>
-                                    <h4 className="text-xs font-medium text-brand-text-muted mb-3 uppercase tracking-wider">Khoảng giá</h4>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input type="number" placeholder="Từ" className="input-field !py-2 text-sm" />
-                                        <input type="number" placeholder="Đến" className="input-field !py-2 text-sm" />
-                                    </div>
-                                </div>
-
-                                {/* Delivery Type */}
-                                <div>
-                                    <h4 className="text-xs font-medium text-brand-text-muted mb-3 uppercase tracking-wider">Giao hàng</h4>
-                                    <div className="space-y-2">
-                                        {['Tự động', 'Thủ công'].map((type, i) => (
-                                            <label key={i} className="flex items-center gap-2 text-sm text-brand-text-secondary cursor-pointer">
-                                                <input type="checkbox" className="rounded border-brand-border bg-brand-surface-2 text-brand-primary focus:ring-brand-primary/30" />
-                                                {type}
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Rating */}
-                                <div>
-                                    <h4 className="text-xs font-medium text-brand-text-muted mb-3 uppercase tracking-wider">Đánh giá</h4>
-                                    <div className="space-y-2">
-                                        {['4 sao trở lên', '3 sao trở lên', '2 sao trở lên'].map((r, i) => (
-                                            <label key={i} className="flex items-center gap-2 text-sm text-brand-text-secondary cursor-pointer">
-                                                <input type="radio" name="rating" className="border-brand-border bg-brand-surface-2 text-brand-primary focus:ring-brand-primary/30" />
-                                                {r}
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Stock */}
-                                <div>
-                                    <label className="flex items-center gap-2 text-sm text-brand-text-secondary cursor-pointer">
-                                        <input type="checkbox" className="rounded border-brand-border bg-brand-surface-2 text-brand-primary focus:ring-brand-primary/30" />
-                                        Chỉ hiển thị còn hàng
-                                    </label>
+                                <h3 className="text-sm font-semibold text-brand-text-primary">Danh mục</h3>
+                                <div className="space-y-1">
+                                    {categories.map(cat => (
+                                        <Link
+                                            key={cat.id}
+                                            href={`/danh-muc/${cat.slug}`}
+                                            className={`flex items-center justify-between text-sm py-2 px-3 rounded-xl transition-colors ${slug === cat.slug
+                                                ? 'bg-brand-primary/10 text-brand-primary font-medium'
+                                                : 'text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-2'
+                                                }`}
+                                        >
+                                            <span>{cat.name}</span>
+                                            <span className="text-xs text-brand-text-muted bg-brand-surface-2 px-1.5 py-0.5 rounded-full">{cat._count?.products || 0}</span>
+                                        </Link>
+                                    ))}
                                 </div>
                             </div>
                         </aside>
@@ -122,89 +144,131 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
                             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-3">
                                 <div>
                                     <h1 className="text-xl font-bold text-brand-text-primary">
-                                        {category ? category.name : 'Tất cả sản phẩm'}
+                                        {currentCategory ? currentCategory.name : 'Tất cả sản phẩm'}
                                     </h1>
                                     <p className="text-sm text-brand-text-muted mt-1">
-                                        {displayProducts.length} sản phẩm
+                                        {total} sản phẩm
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    {/* Mobile Filter */}
-                                    <button
-                                        onClick={() => setShowFilters(true)}
-                                        className="lg:hidden btn-secondary !px-3 !py-2 text-sm flex items-center gap-1.5"
-                                    >
-                                        <SlidersHorizontal className="w-4 h-4" /> Lọc
-                                    </button>
 
-                                    {/* Sort */}
-                                    <div className="relative">
-                                        <select
-                                            value={sortBy}
-                                            onChange={(e) => setSortBy(e.target.value)}
-                                            className="input-field !py-2 text-sm pr-8 appearance-none cursor-pointer min-w-[120px] sm:min-w-[160px]"
-                                        >
-                                            <option value="newest">Mới nhất</option>
-                                            <option value="best-selling">Bán chạy</option>
-                                            <option value="price-low">Giá thấp → cao</option>
-                                            <option value="price-high">Giá cao → thấp</option>
-                                            <option value="rating">Đánh giá cao</option>
-                                        </select>
-                                        <ChevronDown className="w-4 h-4 text-brand-text-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                                    </div>
+                                {/* Sort */}
+                                <div className="relative">
+                                    <select
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value)}
+                                        className="input-field !py-2 text-sm pr-8 appearance-none cursor-pointer min-w-[160px]"
+                                    >
+                                        <option value="bestselling">Bán chạy</option>
+                                        <option value="newest">Mới nhất</option>
+                                        <option value="price_asc">Giá thấp → cao</option>
+                                        <option value="price_desc">Giá cao → thấp</option>
+                                        <option value="rating">Đánh giá cao</option>
+                                    </select>
+                                    <ChevronDown className="w-4 h-4 text-brand-text-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 </div>
                             </div>
 
                             {/* Product Grid */}
-                            {displayProducts.length > 0 ? (
+                            {loading ? (
+                                <div className="text-center py-16">
+                                    <div className="w-8 h-8 border-2 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin mx-auto mb-3" />
+                                    <p className="text-sm text-brand-text-muted">Đang tải sản phẩm...</p>
+                                </div>
+                            ) : products.length > 0 ? (
                                 <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-5">
-                                    {displayProducts.map((product) => (
-                                        <ProductCard key={product.id} product={product} />
+                                    {products.map((p) => (
+                                        <div key={p.id} className="group bg-brand-surface border border-brand-border rounded-2xl overflow-hidden hover:border-brand-primary/30 hover:shadow-card-hover hover:-translate-y-1 transition-all duration-300">
+                                            <div className="relative h-40 bg-gradient-to-br from-brand-surface-2 to-brand-surface-3 flex items-center justify-center overflow-hidden">
+                                                {p.images?.[0]?.url ? (
+                                                    <img src={p.images[0].url} alt={p.name} className="w-20 h-20 object-contain drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+                                                ) : (
+                                                    <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 flex items-center justify-center">
+                                                        <ShoppingCart className="w-8 h-8 text-brand-primary/60" />
+                                                    </div>
+                                                )}
+                                                {p.isFeatured && (
+                                                    <span className="absolute top-3 left-3 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white bg-brand-primary/90">Nổi bật</span>
+                                                )}
+                                                <div className="absolute inset-0 bg-brand-bg/40 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                                                    <Link href={`/san-pham/${p.slug}`} className="flex items-center gap-1.5 bg-brand-primary text-white text-sm font-medium px-4 py-2 rounded-xl hover:brightness-110 transition-all">
+                                                        <Eye className="w-4 h-4" /> Xem chi tiết
+                                                    </Link>
+                                                </div>
+                                            </div>
+                                            <div className="p-4">
+                                                <div className="text-[11px] text-brand-text-muted font-medium mb-1.5">{p.category?.name}</div>
+                                                <Link href={`/san-pham/${p.slug}`}>
+                                                    <h3 className="text-sm font-semibold text-brand-text-primary line-clamp-2 hover:text-brand-primary transition-colors mb-2 leading-snug min-h-[2.5em]">{p.name}</h3>
+                                                </Link>
+                                                <div className="flex items-center gap-2 text-[11px] text-brand-text-muted mb-3">
+                                                    <span className="flex items-center gap-1">
+                                                        <span className="w-4 h-4 rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-[8px] text-white font-bold">{p.shop?.name?.charAt(0)}</span>
+                                                        <span className="truncate max-w-[100px]">{p.shop?.name}</span>
+                                                    </span>
+                                                    <span className="flex items-center gap-0.5 text-brand-warning">
+                                                        <Star className="w-3 h-3 fill-brand-warning" />{p.ratingAverage || 0}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-baseline gap-2 mb-3">
+                                                    <span className="text-lg font-bold text-brand-primary">{formatCurrency(p.price)}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-[11px] text-brand-text-muted mb-3">
+                                                    <span>Đã bán {p.soldCount}</span>
+                                                    <span className="flex items-center gap-1">
+                                                        {p.deliveryType === 'AUTO' ? (
+                                                            <><Zap className="w-3 h-3 text-brand-info" /><span className="text-brand-info">Tự động</span></>
+                                                        ) : (
+                                                            <span>Thủ công</span>
+                                                        )}
+                                                    </span>
+                                                    <span>Kho: {p.stockCountCached || 0}</span>
+                                                </div>
+                                                <Link href={`/san-pham/${p.slug}`} className="block w-full text-center bg-brand-primary/10 text-brand-primary text-sm font-medium py-2 rounded-xl hover:bg-brand-primary hover:text-white transition-all">
+                                                    Mua ngay
+                                                </Link>
+                                            </div>
+                                        </div>
                                     ))}
                                 </div>
                             ) : (
                                 <div className="card text-center py-16">
                                     <div className="text-4xl mb-4">📦</div>
-                                    <h3 className="text-lg font-semibold text-brand-text-primary mb-2">Chưa có sản phẩm phù hợp</h3>
-                                    <p className="text-sm text-brand-text-secondary">Hãy thử thay đổi từ khóa tìm kiếm hoặc bộ lọc để xem thêm kết quả khác.</p>
+                                    <h3 className="text-lg font-semibold text-brand-text-primary mb-2">Chưa có sản phẩm</h3>
+                                    <p className="text-sm text-brand-text-secondary">Danh mục này chưa có sản phẩm nào. Các seller sẽ sớm đăng bán tại đây.</p>
                                 </div>
                             )}
 
                             {/* Pagination */}
-                            <div className="flex items-center justify-center gap-2 mt-8">
-                                {[1, 2, 3, '...', 10].map((page, i) => (
-                                    <button
-                                        key={i}
-                                        className={`min-w-[40px] h-10 rounded-xl text-sm font-medium transition-all ${page === 1
-                                            ? 'bg-brand-primary text-white shadow-glow-primary'
-                                            : 'bg-brand-surface border border-brand-border text-brand-text-secondary hover:border-brand-primary/30'
-                                            }`}
-                                    >
-                                        {page}
+                            {totalPages > 1 && (
+                                <div className="flex items-center justify-center gap-2 mt-8">
+                                    <button onClick={() => goToPage(page - 1)} disabled={page === 1}
+                                        className="p-2 rounded-xl border border-brand-border hover:bg-brand-surface-2 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                        <ChevronLeft className="w-4 h-4 text-brand-text-secondary" />
                                     </button>
-                                ))}
-                            </div>
+                                    {getPageNumbers().map((p, i) => (
+                                        p === '...' ? (
+                                            <span key={`dots-${i}`} className="px-2 text-brand-text-muted">...</span>
+                                        ) : (
+                                            <button key={p} onClick={() => goToPage(p)}
+                                                className={`min-w-[36px] h-9 rounded-xl text-sm font-medium transition-all ${p === page
+                                                    ? 'bg-brand-primary text-white shadow-sm'
+                                                    : 'border border-brand-border text-brand-text-secondary hover:bg-brand-surface-2'
+                                                }`}>
+                                                {p}
+                                            </button>
+                                        )
+                                    ))}
+                                    <button onClick={() => goToPage(page + 1)} disabled={page === totalPages}
+                                        className="p-2 rounded-xl border border-brand-border hover:bg-brand-surface-2 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                        <ChevronRight className="w-4 h-4 text-brand-text-secondary" />
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             </main>
             <Footer />
-
-            {/* Mobile Filter Drawer */}
-            {showFilters && (
-                <div className="fixed inset-0 z-50 lg:hidden">
-                    <div className="absolute inset-0 bg-black/50" onClick={() => setShowFilters(false)} />
-                    <div className="absolute right-0 top-0 bottom-0 w-[85vw] max-w-[320px] bg-brand-surface border-l border-brand-border p-4 md:p-6 overflow-y-auto">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-lg font-semibold text-brand-text-primary">Bộ lọc</h3>
-                            <button onClick={() => setShowFilters(false)} className="p-1 hover:bg-brand-surface-2 rounded-lg">
-                                <X className="w-5 h-5 text-brand-text-muted" />
-                            </button>
-                        </div>
-                        <p className="text-sm text-brand-text-muted">Các bộ lọc sẽ hiển thị ở đây trên mobile.</p>
-                    </div>
-                </div>
-            )}
         </>
     );
 }

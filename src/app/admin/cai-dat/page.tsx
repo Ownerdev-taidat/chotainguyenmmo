@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Globe, Shield, Percent, UserCheck, AlertTriangle, Store, CheckCircle, Loader2, DollarSign, CreditCard } from 'lucide-react';
+import { Save, Globe, Shield, Percent, UserCheck, AlertTriangle, Store, CheckCircle, Loader2, DollarSign, CreditCard, Send, Plus, Trash2 } from 'lucide-react';
 import { useUI } from '@/components/shared/UIProvider';
 
 interface Settings {
@@ -34,6 +34,7 @@ export default function AdminSettingsPage() {
     const [settings, setSettings] = useState<Settings>({ kycRequired: false, autoApprove: false, autoApproveWhenKycOff: true });
     const [security, setSecurity] = useState({ emailVerification: true, manualProductApproval: false, withdrawalLimit: true });
     const [general, setGeneral] = useState({ name: 'ChoTaiNguyen', email: 'support@chotainguyen.vn', hotline: '1900 6868', status: 'active' });
+    const [telegramAdmins, setTelegramAdmins] = useState<{ name: string; link: string }[]>([]);
     const [fees, setFees] = useState<PlatformFees>({ commissionRate: '5', withdrawalFee: '15000', minWithdraw: '500000', minDeposit: '2000', bankName: 'MB Bank', bankAccount: '0393959643', bankOwner: 'NGUYEN TAI DAT' });
     const [stats, setStats] = useState<PlatformStats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -61,6 +62,18 @@ export default function AdminSettingsPage() {
                     bankAccount: s.bankAccount || '',
                     bankOwner: s.bankOwner || '',
                 });
+                if (s.hotline) {
+                    setGeneral(prev => ({
+                        ...prev,
+                        hotline: s.hotline || prev.hotline,
+                    }));
+                }
+                if (s.telegramAdmins && Array.isArray(s.telegramAdmins)) {
+                    setTelegramAdmins(s.telegramAdmins);
+                } else if (s.telegramSupport) {
+                    // migrate old single-field to array
+                    setTelegramAdmins([{ name: 'Admin 1', link: s.telegramSupport }]);
+                }
                 setStats(platformData.data.stats);
             }
         }).finally(() => setLoading(false));
@@ -101,6 +114,8 @@ export default function AdminSettingsPage() {
                     bankName: fees.bankName,
                     bankAccount: fees.bankAccount,
                     bankOwner: fees.bankOwner,
+                    hotline: general.hotline,
+                    telegramAdmins: telegramAdmins,
                 }),
             });
             const data = await res.json();
@@ -253,10 +268,6 @@ export default function AdminSettingsPage() {
                         <input type="text" value={general.name} onChange={e => setGeneral({ ...general, name: e.target.value })} className="input-field" />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-brand-text-primary mb-2">Email hỗ trợ</label>
-                        <input type="email" value={general.email} onChange={e => setGeneral({ ...general, email: e.target.value })} className="input-field" />
-                    </div>
-                    <div>
                         <label className="block text-sm font-medium text-brand-text-primary mb-2">Hotline</label>
                         <input type="tel" value={general.hotline} onChange={e => setGeneral({ ...general, hotline: e.target.value })} className="input-field" />
                     </div>
@@ -268,6 +279,76 @@ export default function AdminSettingsPage() {
                         </select>
                     </div>
                 </div>
+            </div>
+
+            {/* Telegram Support Admins */}
+            <div className="card border-2 border-blue-400/20">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-brand-text-primary flex items-center gap-2">
+                        <Send className="w-4 h-4 text-blue-500" /> Telegram hỗ trợ
+                    </h3>
+                    <button
+                        onClick={() => setTelegramAdmins(prev => [...prev, { name: `Admin ${prev.length + 1}`, link: '' }])}
+                        className="flex items-center gap-1.5 text-xs text-brand-primary font-medium hover:underline"
+                    >
+                        <Plus className="w-3.5 h-3.5" /> Thêm admin
+                    </button>
+                </div>
+                <div className="text-xs text-brand-text-muted mb-4">
+                    Quản lý danh sách admin hỗ trợ qua Telegram. Người dùng sẽ thấy danh sách này ở trang Hỗ trợ và chọn admin để liên hệ.
+                </div>
+                {telegramAdmins.length === 0 ? (
+                    <div className="text-center py-6 text-sm text-brand-text-muted bg-brand-surface-2 rounded-xl">
+                        Chưa có admin Telegram nào. Bấm &quot;Thêm admin&quot; để bắt đầu.
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {telegramAdmins.map((admin, idx) => (
+                            <div key={idx} className="flex items-start gap-3 p-3 rounded-xl bg-brand-surface-2/50 border border-brand-border/30">
+                                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                    <span className="text-xs font-bold text-blue-500">{idx + 1}</span>
+                                </div>
+                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="block text-[10px] uppercase text-brand-text-muted font-medium mb-1">Tên hiển thị</label>
+                                        <input
+                                            type="text"
+                                            value={admin.name}
+                                            onChange={e => {
+                                                const updated = [...telegramAdmins];
+                                                updated[idx] = { ...updated[idx], name: e.target.value };
+                                                setTelegramAdmins(updated);
+                                            }}
+                                            className="input-field !py-1.5 text-sm"
+                                            placeholder="VD: Admin Hỗ trợ"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] uppercase text-brand-text-muted font-medium mb-1">Link Telegram</label>
+                                        <input
+                                            type="text"
+                                            value={admin.link}
+                                            onChange={e => {
+                                                const updated = [...telegramAdmins];
+                                                updated[idx] = { ...updated[idx], link: e.target.value };
+                                                setTelegramAdmins(updated);
+                                            }}
+                                            className="input-field !py-1.5 text-sm"
+                                            placeholder="https://t.me/username"
+                                        />
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setTelegramAdmins(prev => prev.filter((_, i) => i !== idx))}
+                                    className="p-1.5 rounded-lg text-brand-danger/60 hover:text-brand-danger hover:bg-brand-danger/10 transition-all shrink-0 mt-0.5"
+                                    title="Xóa admin"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Security */}

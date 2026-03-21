@@ -1,0 +1,253 @@
+// ===== FILE: prisma/schema.prisma =====
+// Database: PostgreSQL | ORM: Prisma
+// USDT Watch-Only Payment System
+//
+// KEY SECURITY CONSTRAINTS:
+// 1. TransferEvent has @@unique([network, txHash, logIndex]) — prevents double-processing
+// 2. PaymentAttempt has @@index([network, expectedAmount, status]) — fast matching queries
+// 3. All amounts stored as Float with 3 decimal precision for unique markers
+// 4. Status transitions enforced in application code, not DB constraints
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ══════════════════════════════════════
+// ORDERS
+// ══════════════════════════════════════
+
+model Order {
+  id            String   @id @default(cuid())
+  orderNo       String   @unique
+  userId        String?
+  sessionId     String?
+  productId     String?
+  productName   String?
+  fiatAmount    Int      @default(0)     // VND amount
+  usdtAmount    Float    @default(0)     // Base USDT amount (before marker)
+  orderStatus   String   @default("pending")
+  // orderStatus values: pending | approved | completed | cancelled | refunded
+  paymentStatus String   @default("unpaid")
+  // paymentStatus values: unpaid | paying | paid | partial | expired | manual_review
+  expiresAt     DateTime?
+  approvedAt    DateTime?
+  approvedBy    String?  // "system:usdt_watcher" | "admin:{id}" — who approved
+  completedAt   DateTime?
+  metadata      String?  // JSON: extra order data
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  paymentAttempts PaymentAttempt[]
+  statusLogs      OrderStatusLog[]
+
+  @@index([userId])
+  @@index([orderStatus])
+  @@index([paymentStatus])
+  @@index([createdAt])
+}
+
+// ══════════════════════════════════════
+// PAYMENT ATTEMPTS
+// ══════════════════════════════════════
+//
+// UNIQUE AMOUNT MARKER STRATEGY:
+// ────────────────────────────────
+// Each payment attempt gets a unique expected_amount to differentiate
+// transfers from different users when using a fixed wallet address.
+//
+// base_amount    = original USDT from order (e.g., 12.37)
+// unique_marker  = small decimal offset [0.001..0.999] unique among active attempts on same network
+// expected_amount = base_amount + unique_marker (e.g., 12.371)
+//
+// This gives 999 unique slots per network at any given time.
+// Marker is freed when attempt expires/completes, becoming reusable.
+
+model PaymentAttempt {
+  id                    String   @id @default(cuid())
+  orderId               String
+  paymentNo             String   @unique   // Human-readable payment reference
+  network               String             // "TRC20" | "BEP20"
+  tokenSymbol           String   @default("USDT")
+  tokenContract         String             // On-chain contract address
+  receivingAddress      String             // Our public wallet address
+
+  // ── Unique Amount Marker ──
+  baseAmount            Float              // Original USDT amount from order
+  uniqueAmountMarker    Float   @default(0) // Decimal marker [0.001..0.999]
+  expectedAmount        Float              // baseAmount + marker = what user sends
+
+  actualReceivedAmount  Float?             // What blockchain says was received
+  amountDelta           Float?             // actualReceived - expectedAmount
+
+  qrImageUrl            String?
+  qrText                String?
+
+  // Status flow:
+  //   pending → detected → confirming → paid
+  //   pending → expired
+  //   pending → detected → partial
+  //   pending → detected → overpaid (still auto-approved)
+  //   [any active] → late_payment (tx after expiry)
+  //   [any active] → manual_review (ambiguous match)
+  //   [any active] → failed (system error)
+  status                String   @default("pending")
+
+  txHash                String?            // Matched blockchain tx hash
+  blockNumber           Int?
+  logIndex              Int?
+  confirmationCount     Int      @default(0)
+  requiredConfirmations Int      @default(20)
+  senderAddress         String?            // Who sent the USDT
+
+  detectedAt            DateTime?          // When tx first seen
+  confirmedAt           DateTime?          // When enough confirmations reached
+  expiresAt             DateTime           // Payment window deadline
+
+  rawMatchPayload       String?            // JSON: full match data for audit
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  order                 Order    @relation(fields: [orderId], references: [id])
+  statusLogs            PaymentStatusLog[]
+  transferEvents        TransferEvent[]
+
+  @@index([orderId])
+  @@index([network, status])
+  @@index([network, expectedAmount, status])  // Critical for matching queries
+  @@index([status, expiresAt])                // Critical for expiry job
+  @@index([txHash])
+  @@index([createdAt])
+}
+
+// ══════════════════════════════════════
+// BLOCKCHAIN TRANSFER EVENTS
+// ══════════════════════════════════════
+//
+// IDEMPOTENCY KEY: @@unique([network, txHash, logIndex])
+// Each on-chain transfer is recorded EXACTLY ONCE.
+// If worker scans same block again → Prisma unique violation → skip safely.
+
+model TransferEvent {
+  id               String    @id @default(cuid())
+  network          String    // "TRC20" | "BEP20"
+  txHash           String    // Blockchain transaction hash
+  logIndex         Int       @default(0)  // Event index within tx (BEP20 has multiple, TRC20 uses 0)
+  fromAddress      String    // Sender address
+  toAddress        String    // Receiver address (should be our wallet)
+  amount           Float     // USDT amount (human-readable, not raw)
+  tokenContract    String    // Token contract address
+  blockNumber      Int       // Block number where tx was mined
+  blockTimestamp   DateTime? // Block timestamp
+  confirmations    Int       @default(0)
+
+  // Matching result
+  paymentAttemptId String?
+  matchStatus      String    @default("unmatched")
+  // matchStatus values: unmatched | matched | late | ignored | manual_review
+  matchedAt        DateTime?
+  matchReason      String?   // Why this match decision was made
+
+  processedAt      DateTime  @default(now())
+
+  paymentAttempt   PaymentAttempt? @relation(fields: [paymentAttemptId], references: [id])
+
+  // ⚠️ CRITICAL: This unique constraint prevents double-processing
+  @@unique([network, txHash, logIndex])
+  @@index([toAddress, network])
+  @@index([paymentAttemptId])
+  @@index([matchStatus])
+  @@index([blockNumber])
+}
+
+// ══════════════════════════════════════
+// STATUS LOGS (Audit Trail)
+// ══════════════════════════════════════
+
+model PaymentStatusLog {
+  id               String   @id @default(cuid())
+  paymentAttemptId String
+  oldStatus        String
+  newStatus        String
+  reason           String?  // Human-readable reason
+  metadata         String?  // JSON: extra data
+  actor            String?  // "system" | "admin:{userId}"
+  createdAt        DateTime @default(now())
+
+  paymentAttempt   PaymentAttempt @relation(fields: [paymentAttemptId], references: [id])
+
+  @@index([paymentAttemptId])
+  @@index([createdAt])
+}
+
+model OrderStatusLog {
+  id        String   @id @default(cuid())
+  orderId   String
+  oldStatus String
+  newStatus String
+  reason    String?
+  actor     String?
+  createdAt DateTime @default(now())
+
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+// ══════════════════════════════════════
+// WATCHER CHECKPOINTS
+// Each network has exactly one row.
+// Worker reads lastBlock/lastScanAt to resume scanning.
+// ══════════════════════════════════════
+
+model WatcherCheckpoint {
+  id         String   @id @default(cuid())
+  network    String   @unique  // "TRC20" | "BEP20" — one row per network
+  lastBlock  Int      @default(0)
+  lastScanAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ══════════════════════════════════════
+// RECONCILIATION JOBS
+// ══════════════════════════════════════
+
+model ReconciliationJob {
+  id          String    @id @default(cuid())
+  type        String    // full_scan | missed_tx | expired_check
+  network     String?
+  status      String    @default("pending") // pending | running | completed | failed
+  fromBlock   Int?
+  toBlock     Int?
+  result      String?   // JSON
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ══════════════════════════════════════
+// AUDIT LOGS
+// ══════════════════════════════════════
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String   // payment.created | payment.matched | payment.confirmed | order.approved | admin.manual_approve
+  entityType String   // payment_attempt | order | transfer_event
+  entityId   String
+  actor      String   // "system" | "admin:{id}"
+  details    String?  // JSON
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+}

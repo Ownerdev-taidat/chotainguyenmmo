@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import { ArrowRight, UserPlus } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { useI18n } from '@/lib/i18n';
 
 export default function CTASection() {
     const { user, isLoading } = useAuth();
+    const { t } = useI18n();
 
     // Hide CTA when user is logged in
     if (isLoading || user) return null;
@@ -19,17 +21,17 @@ export default function CTASection() {
 
                     <div className="relative z-10">
                         <h2 className="text-2xl md:text-3xl font-bold text-brand-text-primary mb-4">
-                            Bắt đầu khám phá chợ tài nguyên số ngay hôm nay
+                            {t('ctaTitle')}
                         </h2>
                         <p className="text-brand-text-secondary max-w-lg mx-auto mb-8">
-                            Tạo tài khoản để theo dõi đơn hàng, quản lý ví và giao dịch trên một nền tảng gọn gàng, hiện đại.
+                            {t('ctaDesc')}
                         </p>
                         <div className="flex flex-wrap justify-center gap-3">
                             <Link href="/dang-ky" className="btn-primary flex items-center gap-2">
-                                <UserPlus className="w-4 h-4" /> Tạo tài khoản
+                                <UserPlus className="w-4 h-4" /> {t('createAccount')}
                             </Link>
                             <Link href="/danh-muc" className="btn-secondary flex items-center gap-2">
-                                Khám phá sản phẩm <ArrowRight className="w-4 h-4" />
+                                {t('exploreProducts')} <ArrowRight className="w-4 h-4" />
                             </Link>
                         </div>
                     </div>

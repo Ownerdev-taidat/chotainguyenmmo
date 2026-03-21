@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Bell, AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
 
 interface Announcement {
     id: string;
@@ -11,6 +12,7 @@ interface Announcement {
 }
 
 export default function AnnouncementPopup() {
+    const { t } = useI18n();
     const [announcements, setAnnouncements] = useState<Announcement[]>([]);
     const [currentIdx, setCurrentIdx] = useState(0);
     const [show, setShow] = useState(false);
@@ -76,7 +78,7 @@ export default function AnnouncementPopup() {
                     <div className="flex-1">
                         <div className="flex items-center gap-2 mb-0.5">
                             <Bell className="w-3.5 h-3.5 text-brand-text-muted" />
-                            <span className="text-[10px] text-brand-text-muted uppercase tracking-wider font-medium">Thông báo từ ChoTaiNguyen</span>
+                            <span className="text-[10px] text-brand-text-muted uppercase tracking-wider font-medium">{t('notifications')}</span>
                         </div>
                         <h2 className={`text-lg font-bold ${style.color}`}>{current.title}</h2>
                     </div>
@@ -90,7 +92,7 @@ export default function AnnouncementPopup() {
                 {/* Counter */}
                 {announcements.length > 1 && (
                     <p className="text-[10px] text-brand-text-muted text-center mb-3">
-                        {currentIdx + 1} / {announcements.length} thông báo
+                        {currentIdx + 1} / {announcements.length}
                     </p>
                 )}
 
@@ -100,13 +102,13 @@ export default function AnnouncementPopup() {
                         onClick={handleDontShowAgain}
                         className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-brand-surface-2 text-brand-text-muted hover:bg-brand-surface-3 transition-all"
                     >
-                        Không hiển thị lại
+                        {t('dontShowAgain')}
                     </button>
                     <button
                         onClick={handleDismiss}
                         className="flex-1 py-2.5 rounded-xl text-sm font-medium btn-primary"
                     >
-                        {currentIdx < announcements.length - 1 ? 'Tiếp theo' : 'Đóng'}
+                        {currentIdx < announcements.length - 1 ? t('next') : t('close')}
                     </button>
                 </div>
             </div>

@@ -17,25 +17,35 @@ export async function POST(request: NextRequest) {
         // Check payment result
         if (body.resultCode !== 0) {
             console.log('[MoMo IPN] Payment failed:', body.message);
+            // Update deposit status to FAILED
+            if (body.orderId) {
+                await prisma.deposit.updateMany({
+                    where: { referenceCode: body.orderId, status: 'PENDING' },
+                    data: { status: 'FAILED' },
+                }).catch(() => {});
+            }
             return NextResponse.json({ status: 0, message: 'ok' });
         }
 
-        // Extract user info from extraData
-        let userId: string = '';
-        let amount: number = 0;
-        try {
-            const extraData = JSON.parse(Buffer.from(body.extraData, 'base64').toString('utf-8'));
-            userId = extraData.userId;
-            amount = extraData.amount || body.amount;
-        } catch {
-            console.error('[MoMo IPN] Failed to parse extraData');
-            return NextResponse.json({ status: 1, message: 'Invalid extraData' });
+        const orderId = body.orderId;
+        const amount = Number(body.amount);
+
+        // Look up deposit record from DB by orderId
+        const deposit = await prisma.deposit.findFirst({
+            where: { referenceCode: orderId },
+        });
+
+        if (!deposit) {
+            console.error('[MoMo IPN] Deposit not found for orderId:', orderId);
+            return NextResponse.json({ status: 1, message: 'Deposit not found' });
         }
 
-        if (!userId) {
-            console.error('[MoMo IPN] No userId in extraData');
-            return NextResponse.json({ status: 1, message: 'No userId' });
+        if (deposit.status === 'COMPLETED') {
+            console.log('[MoMo IPN] Already processed:', orderId);
+            return NextResponse.json({ status: 0, message: 'ok' });
         }
+
+        const userId = deposit.userId;
 
         // Credit user wallet via Prisma
         const wallet = await prisma.wallet.findUnique({ where: { userId } });
@@ -57,14 +67,18 @@ export async function POST(request: NextRequest) {
                     direction: 'CREDIT',
                     amount,
                     balanceAfter: newBalance,
-                    description: `Nạp tiền qua MoMo — ${body.orderId || 'N/A'}`,
+                    description: `Nạp tiền qua MoMo — ${orderId}`,
                 },
+            }),
+            prisma.deposit.update({
+                where: { id: deposit.id },
+                data: { status: 'COMPLETED', completedAt: new Date() },
             }),
         ]);
 
         console.log(`[MoMo IPN] ✅ Credited ${amount}đ to user ${userId}. New balance: ${newBalance}đ`);
 
-        // MoMo requires 204 or { status: 0 } response
+        // MoMo requires { status: 0 } response
         return NextResponse.json({ status: 0, message: 'ok' });
     } catch (error) {
         console.error('[MoMo IPN] Error:', error);

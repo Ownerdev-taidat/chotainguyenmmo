@@ -37,5 +37,18 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
-  }
+  },
+  "description": "",
+  "main": "next.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taidat4/chotainguyenmmo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/taidat4/chotainguyenmmo/issues"
+  },
+  "homepage": "https://github.com/taidat4/chotainguyenmmo#readme"
 }

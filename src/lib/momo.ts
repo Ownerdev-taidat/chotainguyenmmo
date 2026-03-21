@@ -1,8 +1,6 @@
 /**
- * MoMo Payment Gateway — "Thanh Toán Thông Thường" (captureWallet)
- * Based on official docs: https://business.momo.vn → Hướng dẫn tích hợp
- * 
- * KEY: accessKey is used in SIGNATURE only, NOT in request body!
+ * MoMo Payment Gateway — Based on nodejs_momo/CollectionLink.js reference
+ * Using "payWithMethod" requestType (newer API version)
  */
 
 import crypto from 'crypto';
@@ -33,7 +31,6 @@ function getConfig() {
     const accessKey = process.env.MOMO_ACCESS_KEY || '';
     const secretKey = process.env.MOMO_SECRET_KEY || '';
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://chotainguyenmmo.com';
-    const isSandbox = process.env.MOMO_SANDBOX === 'true';
 
     return {
         partnerCode,
@@ -41,29 +38,14 @@ function getConfig() {
         secretKey,
         redirectUrl: `${baseUrl}/dashboard/nap-tien?momo=callback`,
         ipnUrl: `${baseUrl}/api/v1/wallet/momo/ipn`,
-        endpoint: isSandbox
+        endpoint: process.env.MOMO_SANDBOX === 'true'
             ? 'https://test-payment.momo.vn/v2/gateway/api/create'
             : 'https://payment.momo.vn/v2/gateway/api/create',
     };
 }
 
 /**
- * Create MoMo payment — follows official docs "Thanh Toán Thông Thường"
- * 
- * Mẫu Request from docs:
- * {
- *   "partnerCode": "MOMOT5BZ20231213_TEST",
- *   "requestType": "captureWallet",
- *   "ipnUrl": "https://example.com/momo_ip",
- *   "redirectUrl": "https://momo.vn/",
- *   "orderId": "Partner_Transaction_ID_1721725424433",
- *   "amount": "1000",
- *   "orderInfo": "Thank you for your purchase at MoMo_test",
- *   "requestId": "Request_ID_1721725424433",
- *   "extraData": "eyJza3VzIjoiIn0=",
- *   "signature": "...",
- *   "lang": "en"
- * }
+ * Create MoMo payment — follows nodejs_momo/CollectionLink.js exactly
  */
 export async function createMoMoPayment(req: MoMoPaymentRequest): Promise<MoMoPaymentResponse> {
     const cfg = getConfig();
@@ -72,15 +54,16 @@ export async function createMoMoPayment(req: MoMoPaymentRequest): Promise<MoMoPa
         throw new Error('MoMo chưa cấu hình: cần MOMO_PARTNER_CODE, MOMO_ACCESS_KEY, MOMO_SECRET_KEY');
     }
 
-    const requestId = 'Request_ID_' + new Date().getTime();
-    const amount = String(req.amount);
-    const requestType = 'captureWallet';
+    const requestId = cfg.partnerCode + new Date().getTime();
+    const amount = req.amount; // keep as number for body
+    const amountStr = String(req.amount); // string for signature
+    const requestType = 'payWithMethod';
+    const extraData = req.extraData || '';
+    const orderGroupId = '';
+    const autoCapture = true;
+    const lang = 'vi';
 
-    // extraData: if already base64 from caller, use as-is; otherwise encode
-    const extraData = req.extraData || Buffer.from('{"skus":""}').toString('base64');
-
-    // Signature: accessKey is ONLY here, NOT in body
-    // Format from docs: sorted a-z
+    // Signature format from reference: sorted a-z
     const rawSignature =
         'accessKey=' + cfg.accessKey +
         '&amount=' + amount +
@@ -93,23 +76,31 @@ export async function createMoMoPayment(req: MoMoPaymentRequest): Promise<MoMoPa
         '&requestId=' + requestId +
         '&requestType=' + requestType;
 
+    console.log('[MoMo] Raw signature:', rawSignature);
+
     const signature = crypto.createHmac('sha256', cfg.secretKey)
         .update(rawSignature).digest('hex');
 
-    // Body: matches official docs sample EXACTLY
-    // NO accessKey in body!
+    console.log('[MoMo] Signature:', signature);
+
+    // Request body — matches server.js reference exactly
+    // amount as NUMBER (not string!)
     const body = {
         partnerCode: cfg.partnerCode,
-        requestType: requestType,
-        ipnUrl: cfg.ipnUrl,
-        redirectUrl: cfg.redirectUrl,
-        orderId: req.orderId,
-        amount: amount,
-        orderInfo: req.orderInfo,
+        partnerName: 'ChoTaiNguyen',
+        storeId: 'CTNStore',
         requestId: requestId,
+        amount: amount,
+        orderId: req.orderId,
+        orderInfo: req.orderInfo,
+        redirectUrl: cfg.redirectUrl,
+        ipnUrl: cfg.ipnUrl,
+        lang: lang,
+        requestType: requestType,
+        autoCapture: autoCapture,
         extraData: extraData,
+        orderGroupId: orderGroupId,
         signature: signature,
-        lang: 'vi',
     };
 
     console.log('[MoMo] Creating payment:', JSON.stringify({
@@ -117,6 +108,7 @@ export async function createMoMoPayment(req: MoMoPaymentRequest): Promise<MoMoPa
         amount,
         endpoint: cfg.endpoint,
         partnerCode: cfg.partnerCode,
+        requestType,
     }));
 
     const res = await fetch(cfg.endpoint, {
@@ -137,7 +129,6 @@ export async function createMoMoPayment(req: MoMoPaymentRequest): Promise<MoMoPa
 
 /**
  * Verify MoMo IPN callback signature
- * Format from docs: sorted a-z
  */
 export function verifyMoMoSignature(params: Record<string, any>): boolean {
     const cfg = getConfig();
