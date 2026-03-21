@@ -8,8 +8,8 @@
  *
  * IMPORTANT: Wallet crediting is ONLY done by usdt-watcher.
  * This file does NOT contain any wallet credit logic.
- * This prevents double-credit bugs.
  */
+import { getUsdtVndRate } from './exchange-rate';
 
 import prisma from '@/lib/prisma';
 
@@ -178,7 +178,7 @@ export async function createUsdtDeposit(
     }
 
     // ── Generate unique USDT amount ──
-    const usdtVndRate = parseInt(process.env.USDT_VND_RATE || '25000');
+    const { rate: usdtVndRate } = await getUsdtVndRate();
     const baseUsdt = parseFloat((amountVnd / usdtVndRate).toFixed(2));
     const uniqueUsdt = await generateUniqueUsdtAmount(baseUsdt, network);
 
