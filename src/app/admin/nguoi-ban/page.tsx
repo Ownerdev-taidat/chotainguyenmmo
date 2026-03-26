@@ -180,10 +180,14 @@ export default function AdminSellersPage() {
     useEffect(() => { loadApps(); }, []);
     useEffect(() => { if (activeTab === 'sellers') loadSellers(); }, [activeTab]);
 
+    const getToken = () => localStorage.getItem('token') || '';
+
     const loadApps = async () => {
         setAppsLoading(true);
         try {
-            const res = await fetch('/api/v1/seller/register?view=all');
+            const res = await fetch('/api/v1/seller/register?view=all', {
+                headers: { Authorization: `Bearer ${getToken()}` },
+            });
             const data = await res.json();
             if (data.success) {
                 setApps(data.data);
@@ -232,7 +236,9 @@ export default function AdminSellersPage() {
     const loadSellers = async () => {
         setSellersLoading(true);
         try {
-            const res = await fetch('/api/v1/admin/sellers');
+            const res = await fetch('/api/v1/admin/sellers', {
+                headers: { Authorization: `Bearer ${getToken()}` },
+            });
             const data = await res.json();
             if (data.success && data.data.length > 0) {
                 setSellers(data.data);
@@ -253,7 +259,9 @@ export default function AdminSellersPage() {
         setProfileTab('overview');
         setProfileData(null);
         try {
-            const res = await fetch(`/api/v1/admin/sellers/${shopId}`);
+            const res = await fetch(`/api/v1/admin/sellers/${shopId}`, {
+                headers: { Authorization: `Bearer ${getToken()}` },
+            });
             const data = await res.json();
             if (data.success) setProfileData(data.data);
         } catch { }
@@ -264,7 +272,7 @@ export default function AdminSellersPage() {
         try {
             const res = await fetch('/api/v1/seller/register', {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
                 body: JSON.stringify({ action: 'review', appId, decision, reviewedBy: 'admin', reason }),
             });
             const data = await res.json();
@@ -286,7 +294,7 @@ export default function AdminSellersPage() {
                 try {
                     const res = await fetch('/api/v1/seller/register', {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
                         body: JSON.stringify({ action: 'delete', appId }),
                     });
                     const data = await res.json();
