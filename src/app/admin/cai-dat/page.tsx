@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Globe, Shield, Percent, UserCheck, AlertTriangle, Store, CheckCircle, Loader2, DollarSign, CreditCard, Send, Plus, Trash2 } from 'lucide-react';
+import { Save, Globe, Shield, Percent, UserCheck, AlertTriangle, Store, CheckCircle, Loader2, DollarSign, CreditCard, Send, Plus, Trash2, Bot } from 'lucide-react';
 import { useUI } from '@/components/shared/UIProvider';
 
 interface Settings {
@@ -14,6 +14,9 @@ interface PlatformFees {
     commissionRate: string;
     withdrawalFee: string;
     minWithdraw: string;
+    maxWithdraw: string;
+    withdrawDailyLimit: string;
+    withdrawCooldownMinutes: string;
     minDeposit: string;
     bankName: string;
     bankAccount: string;
@@ -35,7 +38,9 @@ export default function AdminSettingsPage() {
     const [security, setSecurity] = useState({ emailVerification: true, manualProductApproval: false, withdrawalLimit: true });
     const [general, setGeneral] = useState({ name: 'ChoTaiNguyen', email: 'support@chotainguyen.vn', hotline: '1900 6868', status: 'active' });
     const [telegramAdmins, setTelegramAdmins] = useState<{ name: string; link: string }[]>([]);
-    const [fees, setFees] = useState<PlatformFees>({ commissionRate: '5', withdrawalFee: '15000', minWithdraw: '500000', minDeposit: '2000', bankName: 'MB Bank', bankAccount: '0393959643', bankOwner: 'NGUYEN TAI DAT' });
+    const [withdrawChatIds, setWithdrawChatIds] = useState<string[]>([]);
+    const [newChatId, setNewChatId] = useState('');
+    const [fees, setFees] = useState<PlatformFees>({ commissionRate: '5', withdrawalFee: '15000', minWithdraw: '500000', maxWithdraw: '10000000', withdrawDailyLimit: '3', withdrawCooldownMinutes: '30', minDeposit: '2000', bankName: 'MB Bank', bankAccount: '0393959643', bankOwner: 'NGUYEN TAI DAT' });
     const [stats, setStats] = useState<PlatformStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState('');
@@ -57,11 +62,17 @@ export default function AdminSettingsPage() {
                     commissionRate: String(s.commissionRate),
                     withdrawalFee: String(s.withdrawalFee),
                     minWithdraw: String(s.minWithdraw),
+                    maxWithdraw: String(s.maxWithdraw || 10000000),
+                    withdrawDailyLimit: String(s.withdrawDailyLimit || 3),
+                    withdrawCooldownMinutes: String(s.withdrawCooldownMinutes || 30),
                     minDeposit: String(s.minDeposit),
                     bankName: s.bankName || 'MB Bank',
                     bankAccount: s.bankAccount || '',
                     bankOwner: s.bankOwner || '',
                 });
+                if (s.withdrawTelegramChatIds && Array.isArray(s.withdrawTelegramChatIds)) {
+                    setWithdrawChatIds(s.withdrawTelegramChatIds);
+                }
                 if (s.hotline) {
                     setGeneral(prev => ({
                         ...prev,
@@ -110,12 +121,16 @@ export default function AdminSettingsPage() {
                     commissionRate: Number(fees.commissionRate),
                     withdrawalFee: Number(fees.withdrawalFee),
                     minWithdraw: Number(fees.minWithdraw),
+                    maxWithdraw: Number(fees.maxWithdraw),
+                    withdrawDailyLimit: Number(fees.withdrawDailyLimit),
+                    withdrawCooldownMinutes: Number(fees.withdrawCooldownMinutes),
                     minDeposit: Number(fees.minDeposit),
                     bankName: fees.bankName,
                     bankAccount: fees.bankAccount,
                     bankOwner: fees.bankOwner,
                     hotline: general.hotline,
                     telegramAdmins: telegramAdmins,
+                    withdrawTelegramChatIds: withdrawChatIds,
                 }),
             });
             const data = await res.json();
@@ -227,10 +242,64 @@ export default function AdminSettingsPage() {
                         <input type="number" value={fees.minWithdraw} onChange={e => setFees({ ...fees, minWithdraw: e.target.value })} className="input-field" />
                     </div>
                     <div>
+                        <label className="block text-sm font-medium text-brand-text-primary mb-2">Rút tối đa/lần (đ)</label>
+                        <input type="number" value={fees.maxWithdraw} onChange={e => setFees({ ...fees, maxWithdraw: e.target.value })} className="input-field" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-brand-text-primary mb-2">Số lần rút/ngày</label>
+                        <input type="number" value={fees.withdrawDailyLimit} onChange={e => setFees({ ...fees, withdrawDailyLimit: e.target.value })} className="input-field" min="1" max="20" />
+                        <div className="text-[10px] text-brand-text-muted mt-1">Giới hạn số lần rút tiền mỗi ngày</div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-brand-text-primary mb-2">Cooldown (phút)</label>
+                        <input type="number" value={fees.withdrawCooldownMinutes} onChange={e => setFees({ ...fees, withdrawCooldownMinutes: e.target.value })} className="input-field" min="0" max="1440" />
+                        <div className="text-[10px] text-brand-text-muted mt-1">Thời gian chờ giữa 2 lần rút</div>
+                    </div>
+                    <div>
                         <label className="block text-sm font-medium text-brand-text-primary mb-2">Nạp tối thiểu (đ)</label>
                         <input type="number" value={fees.minDeposit} onChange={e => setFees({ ...fees, minDeposit: e.target.value })} className="input-field" />
                     </div>
                 </div>
+            </div>
+
+            {/* Telegram Withdrawal Admin IDs */}
+            <div className="card border-2 border-purple-400/20">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-brand-text-primary flex items-center gap-2">
+                        <Bot className="w-4 h-4 text-purple-500" /> Telegram duyệt rút tiền
+                    </h3>
+                </div>
+                <div className="text-xs text-brand-text-muted mb-4">
+                    Danh sách Chat ID nhận thông báo khi có yêu cầu rút tiền. Tất cả admin đều có quyền duyệt/từ chối.
+                    <br />💡 Để lấy Chat ID, gửi tin nhắn cho <code>@userinfobot</code> trên Telegram.
+                </div>
+                <div className="flex gap-2 mb-3">
+                    <input type="text" value={newChatId} onChange={e => setNewChatId(e.target.value)}
+                        className="input-field flex-1 !py-2 text-sm" placeholder="Nhập Chat ID (VD: 8058736254)" 
+                        onKeyDown={e => { if (e.key === 'Enter' && newChatId.trim()) { setWithdrawChatIds(prev => [...prev, newChatId.trim()]); setNewChatId(''); } }} />
+                    <button onClick={() => { if (newChatId.trim()) { setWithdrawChatIds(prev => [...prev, newChatId.trim()]); setNewChatId(''); } }}
+                        className="btn-primary !py-2 !px-4 text-sm flex items-center gap-1">
+                        <Plus className="w-3.5 h-3.5" /> Thêm
+                    </button>
+                </div>
+                {withdrawChatIds.length === 0 ? (
+                    <div className="text-center py-4 text-sm text-brand-text-muted bg-brand-surface-2 rounded-xl">
+                        Chưa có admin ID. Thêm ít nhất 1 ID để nhận thông báo rút tiền.
+                    </div>
+                ) : (
+                    <div className="flex flex-wrap gap-2">
+                        {withdrawChatIds.map((id, idx) => (
+                            <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-full">
+                                <Bot className="w-3 h-3 text-purple-500" />
+                                <span className="text-xs font-mono text-brand-text-primary">{id}</span>
+                                <button onClick={() => setWithdrawChatIds(prev => prev.filter((_, i) => i !== idx))}
+                                    className="text-brand-danger/60 hover:text-brand-danger transition-colors">
+                                    <Trash2 className="w-3 h-3" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Tax Collection */}
