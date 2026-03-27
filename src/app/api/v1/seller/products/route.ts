@@ -147,7 +147,8 @@ export async function POST(request: NextRequest) {
                 if (items && typeof items === 'string' && items.trim()) {
                     const rawLines = items.trim().split('\n');
                     totalInput += rawLines.length;
-                    const validLines = rawLines.filter((l: string) => l.trim().length >= 3);
+                    // Format validation: must contain '|' and be at least 5 chars (e.g. a|b@c)
+                    const validLines = rawLines.filter((l: string) => l.trim().includes('|') && l.trim().length >= 5);
                     totalErrors += rawLines.length - validLines.length;
 
                     if (validLines.length > 0) {
@@ -258,6 +259,7 @@ export async function PUT(request: NextRequest) {
         let dupCount = 0;
         let errorCount = 0;
         let inputCount = 0;
+        let deletedCount = 0;
         if (variants && variants.length > 0) {
             await prisma.productVariant.deleteMany({ where: { productId: id } });
             await prisma.productVariant.createMany({
@@ -270,50 +272,95 @@ export async function PUT(request: NextRequest) {
                 })),
             });
 
-            // Add new stock items from variants (with duplicate detection)
+            // ── STOCK SYNC: compare textarea content with existing DB stock ──
+            // Collect all stock lines from all variants
+            const allStockLines: string[] = [];
             for (const v of variants) {
                 const items = (v as any).stockItems;
                 if (items && typeof items === 'string' && items.trim()) {
-                    const rawLines = items.trim().split('\n');
-                    inputCount += rawLines.length;
-                    const validLines = rawLines.filter((l: string) => l.trim().length >= 3);
-                    errorCount += rawLines.length - validLines.length;
+                    const lines = items.trim().split('\n');
+                    for (const line of lines) {
+                        if (line.trim()) allStockLines.push(line.trim());
+                    }
+                }
+            }
+            inputCount = allStockLines.length;
 
-                    if (validLines.length > 0) {
-                        // Hash and deduplicate within batch
-                        const seen = new Set<string>();
-                        const lineData: { content: string; hash: string }[] = [];
-                        let selfDups = 0;
-                        for (const line of validLines) {
-                            const h = hashContent(line);
-                            if (seen.has(h)) { selfDups++; } else { seen.add(h); lineData.push({ content: line.trim(), hash: h }); }
-                        }
-                        dupCount += selfDups;
+            // Format validation: each line must contain '|' (e.g. email|pass)
+            const validLines: string[] = [];
+            for (const line of allStockLines) {
+                if (line.includes('|') && line.length >= 5) {
+                    validLines.push(line);
+                } else {
+                    errorCount++;
+                }
+            }
 
-                        // Check against existing DB stock (all statuses)
-                        const hashes = lineData.map(l => l.hash);
-                        const existing = await prisma.stockItem.findMany({
-                            where: { contentHash: { in: hashes } },
-                            select: { contentHash: true },
-                        });
-                        const existingSet = new Set(existing.map(e => e.contentHash));
-                        const clean = lineData.filter(l => !existingSet.has(l.hash));
-                        dupCount += lineData.length - clean.length;
+            // Hash valid lines
+            const lineHashes = validLines.map(line => ({ content: line, hash: hashContent(line) }));
 
-                        if (clean.length > 0) {
-                            const batch = await prisma.stockBatch.create({
-                                data: { productId: id, sourceType: 'paste', totalLines: rawLines.length, validLines: clean.length, invalidLines: rawLines.length - clean.length, uploadedBy: authResult.userId },
-                            });
-                            await prisma.stockItem.createMany({
-                                data: clean.map(item => ({ productId: id, rawContent: item.content, contentHash: item.hash, batchId: batch.id, uploadedBy: authResult.userId })),
-                            });
-                            newStockCount += clean.length;
-                        }
+            // Get existing AVAILABLE stock items from DB
+            const existingItems = await prisma.stockItem.findMany({
+                where: { productId: id, status: 'AVAILABLE' },
+                select: { id: true, rawContent: true, contentHash: true },
+            });
+
+            // Build set of hashes from the textarea
+            const textareaHashes = new Set(lineHashes.map(l => l.hash));
+
+            // Find items to DELETE (in DB but removed from textarea)
+            const itemsToDelete = existingItems.filter(item => {
+                const h = item.contentHash || hashContent(item.rawContent);
+                return !textareaHashes.has(h);
+            });
+            if (itemsToDelete.length > 0) {
+                await prisma.stockItem.deleteMany({
+                    where: { id: { in: itemsToDelete.map(i => i.id) } },
+                });
+                deletedCount = itemsToDelete.length;
+            }
+
+            // Find items to ADD (in textarea but not in DB)
+            const existingHashSet = new Set(existingItems.map(item => item.contentHash || hashContent(item.rawContent)));
+
+            // Also dedupe within the batch itself
+            const seen = new Set<string>();
+            const newItems: { content: string; hash: string }[] = [];
+            for (const item of lineHashes) {
+                if (seen.has(item.hash)) {
+                    dupCount++;
+                } else {
+                    seen.add(item.hash);
+                    if (existingHashSet.has(item.hash)) {
+                        // Already exists in DB as AVAILABLE — skip (not a duplicate, just existing)
+                    } else {
+                        newItems.push(item);
                     }
                 }
             }
 
-            // Update stock count
+            // Check new items against ALL stock (including SOLD from other products)
+            if (newItems.length > 0) {
+                const globalExisting = await prisma.stockItem.findMany({
+                    where: { contentHash: { in: newItems.map(i => i.hash) } },
+                    select: { contentHash: true },
+                });
+                const globalSet = new Set(globalExisting.map(e => e.contentHash));
+                const clean = newItems.filter(i => !globalSet.has(i.hash));
+                dupCount += newItems.length - clean.length;
+
+                if (clean.length > 0) {
+                    const batch = await prisma.stockBatch.create({
+                        data: { productId: id, sourceType: 'paste', totalLines: inputCount, validLines: clean.length, invalidLines: errorCount, uploadedBy: authResult.userId },
+                    });
+                    await prisma.stockItem.createMany({
+                        data: clean.map(item => ({ productId: id, rawContent: item.content, contentHash: item.hash, batchId: batch.id, uploadedBy: authResult.userId })),
+                    });
+                    newStockCount = clean.length;
+                }
+            }
+
+            // Update stock count cache
             const totalAvailable = await prisma.stockItem.count({ where: { productId: id, status: 'AVAILABLE' } });
             await prisma.product.update({ where: { id }, data: { stockCountCached: totalAvailable } });
         }
@@ -330,18 +377,19 @@ export async function PUT(request: NextRequest) {
 
         // Build detailed message
         let message = `Đã cập nhật sản phẩm`;
-        if (inputCount > 0) {
+        if (inputCount > 0 || deletedCount > 0) {
             const parts: string[] = [];
             if (newStockCount > 0) parts.push(`✅ Thêm: ${newStockCount}`);
             if (dupCount > 0) parts.push(`🔁 Trùng: ${dupCount}`);
-            if (errorCount > 0) parts.push(`❌ Lỗi: ${errorCount}`);
-            message += ` | Kho (${inputCount} dòng): ${parts.join(', ')}`;
+            if (errorCount > 0) parts.push(`❌ Lỗi format: ${errorCount}`);
+            if (deletedCount > 0) parts.push(`🗑️ Xóa: ${deletedCount}`);
+            message += ` | Kho: ${parts.join(', ')}`;
         }
 
         return NextResponse.json({
             success: true,
             message,
-            data: { stockAdded: newStockCount, stockDuplicates: dupCount, stockErrors: errorCount },
+            data: { stockAdded: newStockCount, stockDuplicates: dupCount, stockErrors: errorCount, stockDeleted: deletedCount },
         });
     } catch (error) {
         console.error('[Seller Products] PUT error:', error);
