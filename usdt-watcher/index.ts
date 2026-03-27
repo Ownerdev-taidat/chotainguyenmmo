@@ -169,7 +169,7 @@ async function scanBEP20(): Promise<void> {
 
         if (!checkpoint) {
             checkpoint = await prisma.usdtScanCheckpoint.create({
-                data: { network: 'BEP20', lastBlock: currentBlock - 100 },
+                data: { network: 'BEP20', lastBlock: currentBlock - 10 },
             });
         }
 
@@ -178,14 +178,38 @@ async function scanBEP20(): Promise<void> {
 
         if (fromBlock > currentBlock) return;
 
+        // If too far behind (>5000 blocks), reset to near current to avoid pruned history errors
+        if (currentBlock - fromBlock > 5000) {
+            console.log(`[BEP20] ⚠️ Checkpoint too far behind (${currentBlock - fromBlock} blocks). Resetting to current - 50.`);
+            await prisma.usdtScanCheckpoint.update({
+                where: { network: 'BEP20' },
+                data: { lastBlock: currentBlock - 50, lastScanAt: new Date() },
+            });
+            return;
+        }
+
         const paddedAddress = '0x' + BSC_PUBLIC_ADDRESS.slice(2).toLowerCase().padStart(64, '0');
 
-        const logs = await rpcCall('eth_getLogs', [{
-            fromBlock: '0x' + fromBlock.toString(16),
-            toBlock: '0x' + toBlock.toString(16),
-            address: BEP20_USDT_CONTRACT,
-            topics: [TRANSFER_TOPIC, null, paddedAddress],
-        }]);
+        let logs: any[] = [];
+        try {
+            logs = await rpcCall('eth_getLogs', [{
+                fromBlock: '0x' + fromBlock.toString(16),
+                toBlock: '0x' + toBlock.toString(16),
+                address: BEP20_USDT_CONTRACT,
+                topics: [TRANSFER_TOPIC, null, paddedAddress],
+            }]);
+        } catch (rpcErr: any) {
+            // Handle "History has been pruned" error — reset checkpoint
+            if (rpcErr.message?.includes('pruned') || rpcErr.message?.includes('range')) {
+                console.log(`[BEP20] ⚠️ RPC history pruned. Resetting checkpoint to block ${currentBlock - 10}`);
+                await prisma.usdtScanCheckpoint.update({
+                    where: { network: 'BEP20' },
+                    data: { lastBlock: currentBlock - 10, lastScanAt: new Date() },
+                });
+                return;
+            }
+            throw rpcErr;
+        }
 
         if (logs && logs.length > 0) {
             console.log(`[BEP20] Found ${logs.length} transfer logs in blocks ${fromBlock}-${toBlock}`);

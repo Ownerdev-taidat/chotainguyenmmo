@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { createHash } from 'crypto';
 
 /**
  * Seller Inventory API
  * GET  — List products with stock counts
  * POST — Upload stock items (paste text or file content)
  */
+
+// Hash content for duplicate detection (normalized: trim + lowercase)
+function hashContent(content: string): string {
+    const normalized = content.trim().toLowerCase();
+    return createHash('sha256').update(normalized).digest('hex');
+}
 
 export async function GET(request: NextRequest) {
     const authResult = await requireAuth(request);
@@ -86,26 +93,87 @@ export async function POST(request: NextRequest) {
         const product = await prisma.product.findFirst({ where: { id: productId, shopId: shop.id } });
         if (!product) return NextResponse.json({ success: false, message: 'Không tìm thấy sản phẩm' }, { status: 404 });
 
-        // Create batch
+        // ── DUPLICATE CHECK ──
         const validLines = items.filter((line: string) => line.trim());
+        const lineHashes = validLines.map((line: string) => ({
+            content: line.trim(),
+            hash: hashContent(line),
+        }));
+
+        // 1. Remove duplicates within the uploaded batch itself
+        const seen = new Set<string>();
+        const uniqueLines: { content: string; hash: string }[] = [];
+        const selfDuplicates: string[] = [];
+        for (const item of lineHashes) {
+            if (seen.has(item.hash)) {
+                selfDuplicates.push(item.content);
+            } else {
+                seen.add(item.hash);
+                uniqueLines.push(item);
+            }
+        }
+
+        // 2. Check against existing stock in DB (ALL status: AVAILABLE, SOLD, RESERVED)
+        // This catches resold items across all products and all sellers
+        const hashesToCheck = uniqueLines.map(l => l.hash);
+        let existingHashes = new Set<string>();
+
+        if (hashesToCheck.length > 0) {
+            // Batch query in chunks of 500 to avoid query size limits
+            for (let i = 0; i < hashesToCheck.length; i += 500) {
+                const chunk = hashesToCheck.slice(i, i + 500);
+                const existing = await prisma.stockItem.findMany({
+                    where: { contentHash: { in: chunk } },
+                    select: { contentHash: true },
+                });
+                existing.forEach(e => {
+                    if (e.contentHash) existingHashes.add(e.contentHash);
+                });
+            }
+        }
+
+        const dbDuplicates: string[] = [];
+        const cleanLines: { content: string; hash: string }[] = [];
+        for (const item of uniqueLines) {
+            if (existingHashes.has(item.hash)) {
+                dbDuplicates.push(item.content);
+            } else {
+                cleanLines.push(item);
+            }
+        }
+
+        const totalDuplicates = selfDuplicates.length + dbDuplicates.length;
+
+        // If ALL items are duplicates
+        if (cleanLines.length === 0) {
+            return NextResponse.json({
+                success: false,
+                message: `Tất cả ${validLines.length} mục đều trùng lặp! (${dbDuplicates.length} đã tồn tại trong hệ thống, ${selfDuplicates.length} trùng trong file)`,
+                data: { duplicateCount: totalDuplicates, addedCount: 0 },
+            }, { status: 400 });
+        }
+
+        // Create batch
         const batch = await prisma.stockBatch.create({
             data: {
                 productId,
                 sourceType: sourceType || 'paste',
                 fileName: fileName || null,
                 totalLines: items.length,
-                validLines: validLines.length,
-                invalidLines: items.length - validLines.length,
+                validLines: cleanLines.length,
+                invalidLines: items.length - cleanLines.length,
                 uploadedBy: authResult.userId,
+                notes: totalDuplicates > 0 ? `Auto-removed ${totalDuplicates} duplicates` : null,
             },
         });
 
-        // Create stock items
+        // Create stock items with contentHash
         await prisma.stockItem.createMany({
-            data: validLines.map((line: string) => ({
+            data: cleanLines.map(item => ({
                 productId,
-                rawContent: line.trim(),
-                status: 'AVAILABLE',
+                rawContent: item.content,
+                contentHash: item.hash,
+                status: 'AVAILABLE' as const,
                 batchId: batch.id,
                 uploadedBy: authResult.userId,
             })),
@@ -120,10 +188,25 @@ export async function POST(request: NextRequest) {
             data: { stockCountCached: availableCount, lastStockUpdateAt: new Date() },
         });
 
+        // Build result message
+        let message = `Đã thêm ${cleanLines.length} mục tồn kho cho "${product.name}"`;
+        if (totalDuplicates > 0) {
+            message += ` (đã loại ${totalDuplicates} mục trùng lặp`;
+            if (dbDuplicates.length > 0) message += `: ${dbDuplicates.length} đã bán/tồn tại`;
+            if (selfDuplicates.length > 0) message += `${dbDuplicates.length > 0 ? ', ' : ': '}${selfDuplicates.length} trùng trong file`;
+            message += ')';
+        }
+
         return NextResponse.json({
             success: true,
-            message: `Đã thêm ${validLines.length} mục tồn kho cho "${product.name}"`,
-            data: { batchId: batch.id, added: validLines.length },
+            message,
+            data: {
+                batchId: batch.id,
+                added: cleanLines.length,
+                duplicateCount: totalDuplicates,
+                dbDuplicates: dbDuplicates.length,
+                selfDuplicates: selfDuplicates.length,
+            },
         });
     } catch (error) {
         console.error('[Seller Inventory] POST error:', error);

@@ -239,6 +239,7 @@ model StockItem {
   productId         String
   rawContent        String
   normalizedContent String?
+  contentHash       String?         // SHA-256 hash of normalized content for duplicate detection
   status            StockItemStatus @default(AVAILABLE)
   reservedAt        DateTime?
   soldAt            DateTime?
@@ -253,6 +254,7 @@ model StockItem {
   @@index([productId, status])
   @@index([orderId])
   @@index([batchId])
+  @@index([contentHash])
 }
 
 model StockBatch {

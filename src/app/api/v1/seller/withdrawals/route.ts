@@ -16,26 +16,42 @@ export async function GET(request: NextRequest) {
     if (authResult instanceof NextResponse) return authResult;
 
     try {
-        const withdrawals = await prisma.withdrawal.findMany({
-            where: { userId: authResult.userId },
-            orderBy: { createdAt: 'desc' },
-        });
+        const [withdrawals, wallet] = await Promise.all([
+            prisma.withdrawal.findMany({
+                where: { userId: authResult.userId },
+                orderBy: { createdAt: 'desc' },
+            }),
+            prisma.wallet.findUnique({ where: { userId: authResult.userId } }),
+        ]);
+
+        // Calculate pending withdrawal amount
+        const pendingAmount = withdrawals
+            .filter(w => w.status === 'PENDING')
+            .reduce((sum, w) => sum + w.amount, 0);
+
+        const totalWithdrawn = wallet?.totalWithdrawn || 0;
 
         return NextResponse.json({
             success: true,
-            data: withdrawals.map(w => ({
-                id: w.id,
-                amount: w.amount,
-                feeAmount: w.feeAmount,
-                netAmount: w.netAmount,
-                method: `${w.bankName || ''} ****${(w.accountNumber || '').slice(-4)}`,
-                bankName: w.bankName,
-                accountNumber: w.accountNumber,
-                accountName: w.accountName,
-                status: w.status.toLowerCase(),
-                createdAt: w.createdAt.toISOString(),
-                completedAt: w.completedAt?.toISOString() || null,
-            })),
+            data: {
+                withdrawals: withdrawals.map(w => ({
+                    id: w.id,
+                    code: `RT-${w.id.slice(-6).toUpperCase()}`,
+                    amount: w.amount,
+                    fee: w.feeAmount,
+                    netAmount: w.netAmount,
+                    method: `${w.bankName || ''} ****${(w.accountNumber || '').slice(-4)}`,
+                    bankName: w.bankName,
+                    bankAccount: w.accountNumber,
+                    bankOwner: w.accountName,
+                    status: w.status.toLowerCase(),
+                    createdAt: w.createdAt.toISOString(),
+                    completedAt: w.completedAt?.toISOString() || null,
+                })),
+                balance: wallet?.availableBalance || 0,
+                pendingAmount,
+                totalWithdrawn,
+            },
         });
     } catch (error) {
         console.error('[Seller Withdrawals] GET error:', error);

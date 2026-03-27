@@ -57,7 +57,7 @@ export default function SellerWithdrawPage() {
             const res = await fetch('/api/v1/seller/withdrawals', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ amount: num, bankName, bankAccount, bankOwner }),
+                body: JSON.stringify({ amount: num, bankName, accountNumber: bankAccount, accountName: bankOwner }),
             });
             const data = await res.json();
             if (data.success) {
