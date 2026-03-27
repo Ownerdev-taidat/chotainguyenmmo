@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { createHash } from 'crypto';
+
+function hashContent(content: string): string {
+    const normalized = content.trim().toLowerCase();
+    return createHash('sha256').update(normalized).digest('hex');
+}
 
 /**
  * Seller Products API
@@ -130,21 +136,42 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        // Create stock items from variants
+        // Create stock items from variants (with duplicate detection)
         let totalStock = 0;
+        let totalDuplicates = 0;
         if (variants && variants.length > 0) {
             for (const v of variants) {
                 const items = (v as any).stockItems;
                 if (items && typeof items === 'string' && items.trim()) {
                     const lines = items.trim().split('\n').filter((l: string) => l.trim());
                     if (lines.length > 0) {
-                        const batch = await prisma.stockBatch.create({
-                            data: { productId: product.id, sourceType: 'paste', totalLines: lines.length, validLines: lines.length, uploadedBy: authResult.userId },
+                        // Hash and deduplicate within batch
+                        const seen = new Set<string>();
+                        const lineData: { content: string; hash: string }[] = [];
+                        for (const line of lines) {
+                            const h = hashContent(line);
+                            if (!seen.has(h)) { seen.add(h); lineData.push({ content: line.trim(), hash: h }); }
+                        }
+
+                        // Check against existing DB stock (all statuses)
+                        const hashes = lineData.map(l => l.hash);
+                        const existing = await prisma.stockItem.findMany({
+                            where: { contentHash: { in: hashes } },
+                            select: { contentHash: true },
                         });
-                        await prisma.stockItem.createMany({
-                            data: lines.map((line: string) => ({ productId: product.id, rawContent: line.trim(), batchId: batch.id, uploadedBy: authResult.userId })),
-                        });
-                        totalStock += lines.length;
+                        const existingSet = new Set(existing.map(e => e.contentHash));
+                        const clean = lineData.filter(l => !existingSet.has(l.hash));
+                        totalDuplicates += lines.length - clean.length;
+
+                        if (clean.length > 0) {
+                            const batch = await prisma.stockBatch.create({
+                                data: { productId: product.id, sourceType: 'paste', totalLines: lines.length, validLines: clean.length, invalidLines: lines.length - clean.length, uploadedBy: authResult.userId },
+                            });
+                            await prisma.stockItem.createMany({
+                                data: clean.map(item => ({ productId: product.id, rawContent: item.content, contentHash: item.hash, batchId: batch.id, uploadedBy: authResult.userId })),
+                            });
+                            totalStock += clean.length;
+                        }
                     }
                 }
             }
@@ -170,7 +197,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            message: `Đã tạo sản phẩm "${name}"${totalStock > 0 ? ` với ${totalStock} sản phẩm trong kho` : ''}`,
+            message: `Đã tạo sản phẩm "${name}"${totalStock > 0 ? ` với ${totalStock} sản phẩm trong kho` : ''}${totalDuplicates > 0 ? ` (loại ${totalDuplicates} mục trùng)` : ''}`,
             data: { id: product.id, slug: product.slug },
         });
     } catch (error) {
@@ -221,20 +248,41 @@ export async function PUT(request: NextRequest) {
                 })),
             });
 
-            // Add new stock items from variants
+            // Add new stock items from variants (with duplicate detection)
             let newStockCount = 0;
+            let dupCount = 0;
             for (const v of variants) {
                 const items = (v as any).stockItems;
                 if (items && typeof items === 'string' && items.trim()) {
                     const lines = items.trim().split('\n').filter((l: string) => l.trim());
                     if (lines.length > 0) {
-                        const batch = await prisma.stockBatch.create({
-                            data: { productId: id, sourceType: 'paste', totalLines: lines.length, validLines: lines.length, uploadedBy: authResult.userId },
+                        // Hash and deduplicate within batch
+                        const seen = new Set<string>();
+                        const lineData: { content: string; hash: string }[] = [];
+                        for (const line of lines) {
+                            const h = hashContent(line);
+                            if (!seen.has(h)) { seen.add(h); lineData.push({ content: line.trim(), hash: h }); }
+                        }
+
+                        // Check against existing DB stock (all statuses)
+                        const hashes = lineData.map(l => l.hash);
+                        const existing = await prisma.stockItem.findMany({
+                            where: { contentHash: { in: hashes } },
+                            select: { contentHash: true },
                         });
-                        await prisma.stockItem.createMany({
-                            data: lines.map((line: string) => ({ productId: id, rawContent: line.trim(), batchId: batch.id, uploadedBy: authResult.userId })),
-                        });
-                        newStockCount += lines.length;
+                        const existingSet = new Set(existing.map(e => e.contentHash));
+                        const clean = lineData.filter(l => !existingSet.has(l.hash));
+                        dupCount += lines.length - clean.length;
+
+                        if (clean.length > 0) {
+                            const batch = await prisma.stockBatch.create({
+                                data: { productId: id, sourceType: 'paste', totalLines: lines.length, validLines: clean.length, invalidLines: lines.length - clean.length, uploadedBy: authResult.userId },
+                            });
+                            await prisma.stockItem.createMany({
+                                data: clean.map(item => ({ productId: id, rawContent: item.content, contentHash: item.hash, batchId: batch.id, uploadedBy: authResult.userId })),
+                            });
+                            newStockCount += clean.length;
+                        }
                     }
                 }
             }
