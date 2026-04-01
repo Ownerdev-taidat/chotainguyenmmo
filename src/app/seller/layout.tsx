@@ -9,6 +9,7 @@ import {
     TrendingUp, Wallet, Settings, LogOut, ChevronLeft, Bell, Store, Menu, X, FileSpreadsheet, Clock, Megaphone, MessageSquare, FileText, Globe
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import { secureFetch } from '@/lib/secure-fetch';
 
 const sellerMenuKeys = [
     { icon: LayoutDashboard, key: 'sellerOverview' as const, href: '/seller' },
@@ -104,12 +105,11 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
     // Fetch unread message count
     useEffect(() => {
         if (sellerStatus !== 'active') return;
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
         const fetchUnread = () => {
-            fetch('/api/v1/conversations', { headers: { Authorization: `Bearer ${token}` } })
-                .then(r => r.json())
+            secureFetch('/api/v1/conversations')
+                .then(r => r.ok ? r.json() : null)
                 .then(d => {
-                    if (d.success && d.data) {
+                    if (d?.success && d.data) {
                         const total = d.data.reduce((sum: number, c: any) => sum + (c.unread || 0), 0);
                         setUnreadCount(total);
                     }
@@ -154,10 +154,9 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
     // Fetch seller revenue
     useEffect(() => {
         if (sellerStatus !== 'active') return;
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
-        fetch('/api/v1/seller/stats', { headers: { Authorization: `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(d => { if (d.success) setSellerRevenue(d.data.revenueMonth || 0); })
+        secureFetch('/api/v1/seller/stats')
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.success) setSellerRevenue(d.data.revenueMonth || 0); })
             .catch(() => {});
     }, [sellerStatus]);
 

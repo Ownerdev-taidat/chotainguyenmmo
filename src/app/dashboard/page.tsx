@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Wallet, ShoppingBag, AlertTriangle, ArrowRight, TrendingUp, Clock, Package, Loader2, Bell } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { formatCurrency } from '@/lib/utils';
+import { secureFetch } from '@/lib/secure-fetch';
 
 
 interface Order {
@@ -39,17 +40,15 @@ export default function UserDashboard() {
 
     useEffect(() => {
         async function fetchData() {
-            const token = localStorage.getItem('token') || '';
-            const headers = { Authorization: `Bearer ${token}` };
             try {
                 const [ordersRes, txnRes, notiRes] = await Promise.all([
-                    fetch('/api/v1/user/data?type=orders', { headers }),
-                    fetch('/api/v1/user/data?type=transactions', { headers }),
-                    fetch('/api/v1/notifications', { headers }),
+                    secureFetch('/api/v1/user/data?type=orders'),
+                    secureFetch('/api/v1/user/data?type=transactions'),
+                    secureFetch('/api/v1/notifications'),
                 ]);
-                const ordersData = await ordersRes.json();
-                const txnData = await txnRes.json();
-                const notiData = await notiRes.json();
+                const ordersData = ordersRes.ok ? await ordersRes.json() : { success: false };
+                const txnData = txnRes.ok ? await txnRes.json() : { success: false };
+                const notiData = notiRes.ok ? await notiRes.json() : { success: false };
 
                 setOrders(ordersData.success ? ordersData.data : []);
                 setTransactions(txnData.success ? txnData.data : []);

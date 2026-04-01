@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { secureFetch } from '@/lib/secure-fetch';
 
 interface AuthUser {
     id: string;
@@ -62,10 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const t = token || localStorage.getItem('token');
         if (!t) return;
         try {
-            const res = await fetch('/api/v1/wallet/balance', {
-                headers: { Authorization: `Bearer ${t}` },
-            });
-            if (!res.ok) return; // Silent fail — tránh log 401 vào console
+            const res = await secureFetch('/api/v1/wallet/balance');
+            if (!res.ok) return;
             const data = await res.json();
             if (data.success) {
                 setUser(prev => {

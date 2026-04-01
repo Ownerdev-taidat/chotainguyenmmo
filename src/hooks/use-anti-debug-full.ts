@@ -191,8 +191,8 @@ export function useAntiDebugFull(options: AntiDebugOptions = {}): AntiDebugState
         // Cookie bypass
         if (typeof document !== 'undefined' && document.cookie.includes('admin_ctn=true')) return true;
 
-        // Query param bypass (?dev=true)
-        if (searchParams.has('dev')) return true;
+        // Query param bypass (?dev=ctn — chỉ giá trị chính xác)
+        if (searchParams.get('dev') === 'ctn') return true;
 
         return false;
     }, [userRole, pathname, searchParams]);

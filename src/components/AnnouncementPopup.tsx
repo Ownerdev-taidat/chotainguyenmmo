@@ -21,6 +21,7 @@ export default function AnnouncementPopup() {
         const fetchAnnouncements = async () => {
             try {
                 const res = await fetch('/api/v1/announcements');
+                if (!res.ok) return;
                 const data = await res.json();
                 if (data.success && data.data.length > 0) {
                     // Filter out dismissed announcements

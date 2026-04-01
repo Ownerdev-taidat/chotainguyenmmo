@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useCurrency } from '@/lib/currency';
 import { useI18n } from '@/lib/i18n';
+import { secureFetch } from '@/lib/secure-fetch';
 
 const userMenuKeys = [
     { icon: LayoutDashboard, key: 'dashOverview' as const, href: '/dashboard' },
@@ -118,12 +119,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Fetch unread message count
     useEffect(() => {
         if (!user) return;
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
         const fetchUnread = () => {
-            fetch('/api/v1/conversations', { headers: { Authorization: `Bearer ${token}` } })
-                .then(r => r.json())
+            secureFetch('/api/v1/conversations')
+                .then(r => r.ok ? r.json() : null)
                 .then(d => {
-                    if (d.success && d.data) {
+                    if (d?.success && d.data) {
                         const total = d.data.reduce((sum: number, c: any) => sum + (c.unread || 0), 0);
                         setUnreadCount(total);
                     }

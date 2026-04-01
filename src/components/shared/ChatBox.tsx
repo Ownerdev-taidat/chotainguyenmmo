@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Search, ChevronLeft, User as UserIcon, Shield, Store, Loader2, Image as ImageIcon, Check, CheckCheck, Eye, X, Package, ShoppingBag } from 'lucide-react';
 import { useUI } from './UIProvider';
+import { secureFetch } from '@/lib/secure-fetch';
 
 interface Conversation {
     id: string;
@@ -66,15 +67,13 @@ export default function ChatBox({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const prevMsgCountRef = useRef(0);
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
     const { showToast } = useUI();
 
     // Load conversation list
     const loadConversations = useCallback(async () => {
         try {
-            const res = await fetch('/api/v1/conversations', {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const res = await secureFetch('/api/v1/conversations');
+            if (!res.ok) { setLoadingConvos(false); return; }
             const data = await res.json();
             if (data.success) {
                 let convos: Conversation[] = data.data;
@@ -89,15 +88,14 @@ export default function ChatBox({
             }
         } catch {}
         setLoadingConvos(false);
-    }, [token]);
+    }, []);
 
     // Load messages for active conversation
     const loadMessages = useCallback(async (partnerId: string, silent = false) => {
         if (!silent) setLoadingMessages(true);
         try {
-            const res = await fetch(`/api/v1/conversations?partnerId=${partnerId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const res = await secureFetch(`/api/v1/conversations?partnerId=${partnerId}`);
+            if (!res.ok) { if (!silent) setLoadingMessages(false); return; }
             const data = await res.json();
             if (data.success) {
                 setMessages(data.data);
@@ -106,12 +104,10 @@ export default function ChatBox({
                 // Auto-mark as read
                 if (data.conversationId && data.data.length > 0) {
                     const lastMsg = data.data[data.data.length - 1];
-                    fetch('/api/v1/conversations', {
+                    secureFetch('/api/v1/conversations', {
                         method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                         body: JSON.stringify({ conversationId: data.conversationId, lastMessageId: lastMsg.id }),
                     }).then(() => {
-                        // Clear local unread count for this conversation
                         setConversations(prev => prev.map(c =>
                             c.id === data.conversationId ? { ...c, unread: 0 } : c
                         ));
@@ -120,7 +116,7 @@ export default function ChatBox({
             }
         } catch {}
         if (!silent) setLoadingMessages(false);
-    }, [token]);
+    }, []);
 
     useEffect(() => { loadConversations(); }, [loadConversations]);
 
@@ -164,9 +160,8 @@ export default function ChatBox({
             } else {
                 body.message = messageInput.trim();
             }
-            const res = await fetch('/api/v1/conversations', {
+            const res = await secureFetch('/api/v1/conversations', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify(body),
             });
             const data = await res.json();
@@ -195,9 +190,8 @@ export default function ChatBox({
             msg = `📦 Hỏi về đơn hàng: ${contextCard.code || contextCard.id}`;
         }
         try {
-            const res = await fetch('/api/v1/conversations', {
+            const res = await secureFetch('/api/v1/conversations', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ partnerId: activePartnerId, message: msg }),
             });
             const data = await res.json();

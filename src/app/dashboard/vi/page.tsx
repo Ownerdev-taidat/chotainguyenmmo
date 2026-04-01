@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Wallet, ArrowUpRight, ArrowDownLeft, RefreshCw, Plus, Loader2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { secureFetch } from '@/lib/secure-fetch';
 
 interface Transaction {
     id: string;
@@ -27,7 +28,8 @@ export default function WalletPage() {
     const fetchTransactions = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch('/api/v1/user/data?type=transactions');
+            const res = await secureFetch('/api/v1/user/data?type=transactions');
+            if (!res.ok) { setTransactions([]); setLoading(false); return; }
             const data = await res.json();
             if (data.success && data.data.length > 0) {
                 setTransactions(data.data);
