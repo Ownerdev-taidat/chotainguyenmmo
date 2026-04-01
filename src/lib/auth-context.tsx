@@ -65,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const res = await fetch('/api/v1/wallet/balance', {
                 headers: { Authorization: `Bearer ${t}` },
             });
+            if (!res.ok) return; // Silent fail — tránh log 401 vào console
             const data = await res.json();
             if (data.success) {
                 setUser(prev => {

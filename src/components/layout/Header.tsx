@@ -96,7 +96,11 @@ export default function Header() {
 
     const fetchNotifications = async () => {
         try {
-            const res = await fetch('/api/v1/notifications?limit=10');
+            const token = localStorage.getItem('token') || '';
+            const res = await fetch('/api/v1/notifications?limit=10', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return; // Silent fail — không log 401 vào console
             const data = await res.json();
             if (data.success) {
                 setNotifications(data.data.notifications || []);
@@ -117,9 +121,10 @@ export default function Header() {
 
     const handleMarkAllRead = async () => {
         try {
+            const token = localStorage.getItem('token') || '';
             await fetch('/api/v1/notifications', {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ markAll: true }),
             });
             setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
@@ -143,7 +148,11 @@ export default function Header() {
 
     const fetchUnreadMessages = async () => {
         try {
-            const res = await fetch('/api/v1/conversations');
+            const token = localStorage.getItem('token') || '';
+            const res = await fetch('/api/v1/conversations', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return; // Silent fail
             const data = await res.json();
             if (data.success && Array.isArray(data.data)) {
                 const total = data.data.reduce((sum: number, c: any) => sum + (c.unread || 0), 0);
