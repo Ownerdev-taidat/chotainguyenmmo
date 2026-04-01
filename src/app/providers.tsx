@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/lib/theme-provider';
 import ThemeDecorations from '@/components/shared/ThemeDecorations';
 import AnnouncementPopup from '@/components/AnnouncementPopup';
 import { UIProvider } from '@/components/shared/UIProvider';
+import ProtectionEngine from '@/components/shared/ProtectionEngine';
 import { I18nProvider } from '@/lib/i18n';
 import { CurrencyProvider } from '@/lib/currency';
 
@@ -17,6 +18,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                         <UIProvider>
                             {children}
                             <AnnouncementPopup />
+                            <ProtectionEngine />
                         </UIProvider>
                     </AuthProvider>
                     <ThemeDecorations />

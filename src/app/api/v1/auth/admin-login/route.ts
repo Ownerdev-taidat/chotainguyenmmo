@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { signToken, hashPassword } from '@/lib/auth';
 
-const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY || 'CTN_ADMIN_2026_xK9mP4qR7sT2vW5yBn8jLc3';
+// ⚠️ BẮT BUỘC set ADMIN_SECRET_KEY trong .env — không có fallback
+const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY;
+if (!ADMIN_SECRET_KEY) {
+    console.error('[SECURITY] ADMIN_SECRET_KEY chưa được cấu hình trong .env!');
+}
 
 /**
  * Admin Key Login — enter admin key only, auto-login as admin

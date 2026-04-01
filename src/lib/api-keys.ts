@@ -26,24 +26,9 @@ export interface ApiKey {
     googleSheetLastSync?: string;
 }
 
-// In-memory store
-let apiKeys: ApiKey[] = [
-    // Demo API key for testing
-    {
-        id: 'apk_demo',
-        key: 'ctn_live_demo_key_2026',
-        keyHash: hashKey('ctn_live_demo_key_2026'),
-        userId: 'user_taidat',
-        username: 'taidat',
-        label: 'Demo Key',
-        type: 'CUSTOMER',
-        permissions: ['products:read', 'purchase', 'orders:read', 'balance:read'],
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        usageCount: 0,
-        rateLimit: 60,
-    },
-];
+// In-memory store — không có demo key mặc định (bảo mật)
+// TODO: Migrate sang database (Prisma) để persist qua restart
+let apiKeys: ApiKey[] = [];
 
 function hashKey(key: string): string {
     return crypto.createHash('sha256').update(key).digest('hex');

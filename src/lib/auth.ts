@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SignJWT, jwtVerify } from 'jose';
 import { createHash, randomBytes } from 'crypto';
 
+// ⚠️ BẮT BUỘC set JWT_SECRET trong .env — không có fallback
+const jwtSecretStr = process.env.JWT_SECRET;
+if (!jwtSecretStr && process.env.NODE_ENV === 'production') {
+    throw new Error('[SECURITY] JWT_SECRET chưa được cấu hình trong .env!');
+}
 const JWT_SECRET = new TextEncoder().encode(
-    process.env.JWT_SECRET || 'chotainguyen-secret-key-change-in-production'
+    jwtSecretStr || 'dev-only-secret-DO-NOT-USE-IN-PRODUCTION'
 );
 
 // Hash password using SHA-256 (use bcrypt in production)
