@@ -1,5 +1,8 @@
 'use client';
 
+// ⚡ Antigravity: Patch fetch() cho tất cả /api/* calls tự gửi httpOnly cookie
+import '@/lib/fetch-patch';
+
 import { AuthProvider } from '@/lib/auth-context';
 import { ThemeProvider } from '@/lib/theme-provider';
 import ThemeDecorations from '@/components/shared/ThemeDecorations';

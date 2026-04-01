@@ -1,7 +1,15 @@
 'use client';
 
+/**
+ * AuthContext — Antigravity Secure Auth 2026
+ * ===========================================
+ * ✅ Fix React Error #418: KHÔNG đọc localStorage/cookie trong initial render
+ * ✅ httpOnly cookie auth: token KHÔNG lưu trong localStorage
+ * ✅ Tự migrate token cũ từ localStorage → httpOnly cookie
+ * ✅ Backward compatible: secureFetch vẫn hoạt động
+ */
+
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { secureFetch } from '@/lib/secure-fetch';
 
 interface AuthUser {
     id: string;
@@ -33,94 +41,128 @@ const AuthContext = createContext<AuthContextType>({
     refreshWallet: async () => { },
 });
 
-// Helper: check if we're in browser and cookie indicates logged in
-function getInitialAuth(): { user: AuthUser | null; token: string | null } {
-    if (typeof window === 'undefined') return { user: null, token: null };
-    try {
-        // Only attempt localStorage read if logged_in cookie exists
-        // This avoids the loading skeleton for logged-in users
-        const hasCookie = document.cookie.includes('logged_in=1');
-        if (!hasCookie) return { user: null, token: null };
-
-        const savedToken = localStorage.getItem('token');
-        const savedUser = localStorage.getItem('user');
-        if (savedToken && savedUser) {
-            return { user: JSON.parse(savedUser), token: savedToken };
-        }
-    } catch { /* ignore */ }
-    return { user: null, token: null };
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    const initial = getInitialAuth();
-    const [user, setUser] = useState<AuthUser | null>(initial.user);
-    const [token, setToken] = useState<string | null>(initial.token);
-    // If we got initial data from cookie+localStorage, skip loading state
-    const [isLoading, setIsLoading] = useState(!initial.user);
+    // ⚠️ FIX #418: Luôn bắt đầu với null — KHÔNG đọc localStorage trong initial render
+    // Điều này đảm bảo server HTML = client HTML → không hydration mismatch
+    const [user, setUser] = useState<AuthUser | null>(null);
+    const [token, setToken] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
-    // Fetch latest wallet balance from DB
+    // Fetch wallet balance — dùng credentials: 'include' để gửi httpOnly cookie
     const refreshWallet = useCallback(async () => {
-        const t = token || localStorage.getItem('token');
-        if (!t) return;
         try {
-            const res = await secureFetch('/api/v1/wallet/balance');
+            const res = await fetch('/api/v1/wallet/balance', {
+                credentials: 'include', // Gửi httpOnly cookie
+            });
             if (!res.ok) return;
             const data = await res.json();
             if (data.success) {
                 setUser(prev => {
                     if (!prev) return prev;
                     const updated = { ...prev, walletBalance: data.data.availableBalance };
-                    localStorage.setItem('user', JSON.stringify(updated));
+                    // Chỉ lưu user info (không lưu token)
+                    try { localStorage.setItem('user', JSON.stringify(updated)); } catch {}
                     return updated;
                 });
             }
         } catch { /* silent fail */ }
-    }, [token]);
+    }, []);
 
-    // Sync cookies and handle case where cookie exists but localStorage doesn't
+    // ---- MIGRATION + HYDRATION ----
+    // Chạy 1 lần sau khi mount (client-only) → fix #418
     useEffect(() => {
         try {
-            const savedToken = localStorage.getItem('token');
+            // 1. Đọc user info từ localStorage (chỉ dùng để hiển thị UI nhanh)
             const savedUser = localStorage.getItem('user');
-            if (savedToken && savedUser) {
-                const parsed = JSON.parse(savedUser);
-                setToken(savedToken);
-                setUser(parsed);
-                document.cookie = 'logged_in=1; path=/; max-age=31536000';
-            } else {
-                document.cookie = 'logged_in=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+
+            // 2. Check xem có token cũ trong localStorage không → migrate sang cookie
+            const oldToken = localStorage.getItem('token');
+            const oldAdminToken = localStorage.getItem('admin_token');
+
+            if (oldToken || oldAdminToken) {
+                const tokenToMigrate = oldToken || oldAdminToken;
+
+                // Gọi API để set httpOnly cookie từ token cũ
+                fetch('/api/v1/auth/migrate-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: tokenToMigrate }),
+                    credentials: 'include',
+                }).then(res => res.json()).then(data => {
+                    if (data.success) {
+                        // Xóa token khỏi localStorage — mission accomplished!
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('admin_token');
+                        // Set user data
+                        if (data.data?.user) {
+                            setUser(data.data.user);
+                            setToken('httpOnly'); // Marker — token thực ở cookie
+                            localStorage.setItem('user', JSON.stringify(data.data.user));
+                            document.cookie = 'logged_in=1; path=/; max-age=31536000';
+                        }
+                    } else {
+                        // Token hết hạn — xóa hết
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('admin_token');
+                        localStorage.removeItem('user');
+                        document.cookie = 'logged_in=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                    }
+                    setIsLoading(false);
+                }).catch(() => {
+                    // Fallback: token cũ vẫn hoạt động qua Authorization header
+                    if (savedUser) {
+                        try {
+                            setUser(JSON.parse(savedUser));
+                            setToken(tokenToMigrate);
+                        } catch {}
+                    }
+                    setIsLoading(false);
+                });
+                return; // Đợi migration xong
+            }
+
+            // 3. Không có token cũ — check cookie auth
+            if (savedUser && document.cookie.includes('logged_in=1')) {
+                try {
+                    setUser(JSON.parse(savedUser));
+                    setToken('httpOnly');
+                } catch {}
             }
         } catch { /* ignore */ }
         setIsLoading(false);
     }, []);
 
-    // Auto-refresh wallet balance on mount and every 30 seconds
+    // Auto-refresh wallet
     useEffect(() => {
-        if (!token) return;
+        if (!user) return;
         refreshWallet();
         const interval = setInterval(refreshWallet, 30000);
         return () => clearInterval(interval);
-    }, [token, refreshWallet]);
+    }, [user, refreshWallet]);
 
     const login = (newToken: string, newUser: AuthUser) => {
-        setToken(newToken);
+        // Login API đã set httpOnly cookie → chỉ cần set state
+        setToken('httpOnly');
         setUser(newUser);
-        localStorage.setItem('token', newToken);
+        // Lưu user info (KHÔNG lưu token)
         localStorage.setItem('user', JSON.stringify(newUser));
-        // Set cookie so SSR knows user is logged in
         document.cookie = 'logged_in=1; path=/; max-age=31536000';
-        // Immediately refresh wallet from DB
+        // Refresh wallet
         setTimeout(() => refreshWallet(), 500);
     };
 
     const logout = () => {
         setToken(null);
         setUser(null);
+        // Xóa tất cả
         localStorage.removeItem('token');
+        localStorage.removeItem('admin_token');
         localStorage.removeItem('user');
-        // Clear cookies
+        // Clear cookies  
         document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
         document.cookie = 'logged_in=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        // Gọi server để clear httpOnly cookie
+        fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
     };
 
     const updateUser = (data: Partial<AuthUser>) => {

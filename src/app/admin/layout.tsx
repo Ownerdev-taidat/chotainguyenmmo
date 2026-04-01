@@ -10,9 +10,7 @@ import {
     FileText, Settings, ClipboardList, LogOut, ChevronLeft, Bell, Shield, Menu, X, CreditCard, Palette, Lock, KeyRound, Eye, EyeOff, MessageSquare, Loader2, Megaphone
 } from 'lucide-react';
 
-// ==================== ADMIN KEY ====================
-const ADMIN_SECRET_KEY = 'CTN_ADMIN_2026_xK9mP4qR7sT2vW5yBn8jLc3';
-// ===================================================
+// Admin key validation happens server-side via /api/v1/auth/admin-login
 
 const adminMenuItems = [
     {
@@ -116,21 +114,7 @@ function AdminKeyGate({ onUnlock }: { onUnlock: () => void }) {
         if (locked || loading) return;
         setError('');
 
-        // Quick client-side key check
-        if (key !== ADMIN_SECRET_KEY) {
-            const newAttempts = attempts + 1;
-            setAttempts(newAttempts);
-            setError(`Sai Admin Key! (${newAttempts}/5)`);
-            setKey('');
-            if (newAttempts >= 5) {
-                setLocked(true);
-                setError('🔒 Đã khóa — quá nhiều lần thử sai. Vui lòng chờ 60 giây.');
-                setTimeout(() => { setLocked(false); setAttempts(0); setError(''); }, 60000);
-            }
-            return;
-        }
-
-        // Key correct — call API to auto-login as admin
+        // Quick check — gửi lên server validat
         setLoading(true);
         try {
             const res = await fetch('/api/v1/auth/admin-login', {
@@ -141,13 +125,21 @@ function AdminKeyGate({ onUnlock }: { onUnlock: () => void }) {
             const data = await res.json();
 
             if (!res.ok || !data.success) {
-                setError(data.message || 'Lỗi xác thực. Thử lại.');
+                const newAttempts = attempts + 1;
+                setAttempts(newAttempts);
+                setError(data.message || `Sai Admin Key! (${newAttempts}/5)`);
+                setKey('');
                 setLoading(false);
+                if (newAttempts >= 5) {
+                    setLocked(true);
+                    setError('🔒 Đã khóa — quá nhiều lần thử sai. Vui lòng chờ 60 giây.');
+                    setTimeout(() => { setLocked(false); setAttempts(0); setError(''); }, 60000);
+                }
                 return;
             }
 
-            // Store admin token separately so main site login can't overwrite it
-            localStorage.setItem('admin_token', data.data.token);
+            // httpOnly cookie đã được set bởi server response
+            // KHÔNG lưu token vào localStorage!
             login(data.data.token, data.data.user);
             sessionStorage.setItem('admin_verified', 'true');
             onUnlock();
@@ -250,7 +242,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     const handleLogout = () => {
         sessionStorage.removeItem('admin_verified');
-        localStorage.removeItem('admin_token');
+        // admin_token không còn tồn tại trong localStorage nữa
         logout();
         router.push('/');
     };

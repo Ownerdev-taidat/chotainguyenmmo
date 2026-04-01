@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
             role: adminUser.role,
         });
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             success: true,
             data: {
                 token,
@@ -59,6 +59,17 @@ export async function POST(request: NextRequest) {
                 },
             },
         });
+
+        // Set httpOnly cookie — same as regular login
+        response.cookies.set('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 60 * 60 * 24 * 7,
+            path: '/',
+        });
+
+        return response;
     } catch (error) {
         console.error('[Admin Key Login] Error:', error);
         return NextResponse.json({ success: false, message: 'Lỗi hệ thống' }, { status: 500 });
