@@ -1,13 +1,15 @@
 /**
  * Antigravity Auth Compatibility Layer 2026
  * ==========================================
- * Patch global fetch() để tự động gửi credentials: 'include'
- * cho tất cả request tới /api/v1/* 
+ * Patch global fetch() để:
+ * 1. Tự động gửi credentials: 'include' cho /api/* (httpOnly cookie)
+ * 2. Xóa Authorization header rỗng/invalid (Bearer '') → fallback sang cookie
+ * 3. Auto Content-Type cho JSON body
  * 
- * → 30+ file cũ dùng fetch('/api/v1/...') sẽ tự động gửi httpOnly cookie
+ * → 30+ file cũ dùng fetch('/api/v1/...') sẽ tự động dùng httpOnly cookie
  * → KHÔNG CẦN sửa từng file
  * 
- * Import 1 lần trong providers.tsx hoặc layout.tsx
+ * Import 1 lần trong providers.tsx
  */
 
 if (typeof window !== 'undefined') {
@@ -28,13 +30,28 @@ if (typeof window !== 'undefined') {
                 init.credentials = 'include';
             }
 
+            // ⚡ FIX: Xóa Authorization header rỗng/invalid
+            // Nhiều file admin cũ gửi `Authorization: Bearer ` (token rỗng từ localStorage)
+            // → Server nhận header rỗng → không fallback sang cookie → 401
+            // Fix: xóa header rỗng → server tự đọc cookie
+            const headers = new Headers(init.headers);
+            const authHeader = headers.get('Authorization');
+            if (authHeader) {
+                const tokenValue = authHeader.replace(/^Bearer\s*/i, '').trim();
+                if (!tokenValue) {
+                    // Token rỗng → xóa header → server dùng cookie thay
+                    headers.delete('Authorization');
+                    init.headers = headers;
+                }
+            }
+
             // Auto Content-Type cho JSON body
             if (init.body && typeof init.body === 'string') {
-                const headers = new Headers(init.headers);
-                if (!headers.has('Content-Type')) {
-                    headers.set('Content-Type', 'application/json');
+                const h = new Headers(init.headers);
+                if (!h.has('Content-Type')) {
+                    h.set('Content-Type', 'application/json');
+                    init.headers = h;
                 }
-                init.headers = headers;
             }
         }
 
