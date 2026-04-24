@@ -6,6 +6,7 @@ import { generateQRUrl } from '@/lib/mbbank';
 
 const MBBANK_ACCOUNT = process.env.MBBANK_ACCOUNT || '';
 const MBBANK_NAME = process.env.MBBANK_NAME || 'MB Bank';
+const MBBANK_OWNER = process.env.MBBANK_OWNER_NAME || 'NGUYEN TAI DAT';
 const DEPOSIT_EXPIRY_MINUTES = parseInt(process.env.DEPOSIT_EXPIRY_MINUTES || '15');
 const MIN_DEPOSIT = parseInt(process.env.MIN_DEPOSIT_AMOUNT || '2000');
 
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
                 qrUrl,
                 bankName: MBBANK_NAME,
                 bankAccount: MBBANK_ACCOUNT,
+                bankOwner: MBBANK_OWNER,
                 transferContent,
                 expiresAt,
             },

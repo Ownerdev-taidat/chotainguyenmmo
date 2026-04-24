@@ -793,6 +793,10 @@ export default function DepositPage() {
                                                 </button>
                                             </div>
                                         </div>
+                                        <div className="bg-gray-50 rounded-xl p-3">
+                                            <p className="text-[11px] text-gray-400 font-medium">CHỦ TÀI KHOẢN</p>
+                                            <p className="text-sm font-bold text-gray-800">{deposit.bankOwner || 'NGUYEN TAI DAT'}</p>
+                                        </div>
                                         <div className="bg-blue-50 rounded-xl p-3">
                                             <div className="flex items-center justify-between">
                                                 <div>

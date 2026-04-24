@@ -301,7 +301,7 @@ function formatTransactionDate(dateStr: string): string {
 
 // QR code URL generator
 export function generateQRUrl(accountNo: string, amount: number, content: string): string {
-  const ownerName = process.env.MBBANK_OWNER_NAME || 'NGUYEN TAI THINH';
+  const ownerName = process.env.MBBANK_OWNER_NAME || 'NGUYEN TAI DAT';
   const params = new URLSearchParams({ amount: amount.toString(), addInfo: content, accountName: ownerName });
   return `https://img.vietqr.io/image/MB-${accountNo}-compact.png?${params.toString()}`;
 }
