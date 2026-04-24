@@ -40,18 +40,6 @@ export async function POST(request: NextRequest) {
             },
         });
 
-        // Rate limit: max 5 requests per minute
-        const oneMinuteAgo = new Date(Date.now() - 60000);
-        const recentCount = await prisma.deposit.count({
-            where: { userId: authResult.userId, createdAt: { gte: oneMinuteAgo } },
-        });
-        if (recentCount >= 5) {
-            return NextResponse.json(
-                { success: false, message: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.', errorCode: 'RATE_LIMITED' },
-                { status: 429 }
-            );
-        }
-
         const token = generateDepositToken();
         const transferContent = `CTN${token}`;
         const expiresAt = new Date(Date.now() + DEPOSIT_EXPIRY_MINUTES * 60000);

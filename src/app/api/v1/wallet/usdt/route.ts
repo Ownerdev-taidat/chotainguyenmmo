@@ -34,22 +34,6 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // ── Rate limit: max 3 USDT deposits per hour ──
-        const oneHourAgo = new Date(Date.now() - 3600000);
-        const recentCount = await prisma.deposit.count({
-            where: {
-                userId: authResult.userId,
-                method: 'USDT',
-                createdAt: { gte: oneHourAgo },
-            },
-        });
-        if (recentCount >= 50) {
-            return NextResponse.json(
-                { success: false, message: 'Bạn đã tạo quá nhiều yêu cầu USDT. Thử lại sau 1 giờ.' },
-                { status: 429 }
-            );
-        }
-
         // ── Create deposit ──
         // amount is now USDT, convert to VND using live rate
         const { rate: usdtVndRate } = await getUsdtVndRate();

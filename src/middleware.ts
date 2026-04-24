@@ -1,59 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Antigravity Marketplace Fortress — Middleware
+ * Antigravity Marketplace — Middleware
  * =============================================
  * 1. Security Headers (CSP, HSTS, X-Frame-Options, v.v.)
- * 2. Rate Limiting (in-memory, per IP)
- * 3. Admin route basic protection
+ * 2. Admin route basic protection
+ * 
+ * Rate limiting: DISABLED — không giới hạn request
  */
-
-// ============================================================
-// RATE LIMITING — In-memory store (reset khi restart server)
-// ============================================================
-interface RateLimitEntry {
-    count: number;
-    resetAt: number; // Unix timestamp ms
-}
-
-const rateLimitStore = new Map<string, RateLimitEntry>();
-
-// Tự động dọn dẹp mỗi 60 giây
-const CLEANUP_INTERVAL = 60_000;
-let lastCleanup = Date.now();
-
-function cleanupRateLimit() {
-    const now = Date.now();
-    if (now - lastCleanup < CLEANUP_INTERVAL) return;
-    lastCleanup = now;
-    for (const [key, entry] of rateLimitStore) {
-        if (now > entry.resetAt) {
-            rateLimitStore.delete(key);
-        }
-    }
-}
-
-/**
- * Kiểm tra rate limit
- * @returns true nếu request được phép, false nếu bị chặn
- */
-function checkRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
-    cleanupRateLimit();
-    const now = Date.now();
-    const entry = rateLimitStore.get(key);
-
-    if (!entry || now > entry.resetAt) {
-        rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
-        return true;
-    }
-
-    if (entry.count >= maxRequests) {
-        return false;
-    }
-
-    entry.count++;
-    return true;
-}
 
 // ============================================================
 // SECURITY HEADERS
@@ -88,30 +42,6 @@ const securityHeaders: Record<string, string> = {
 };
 
 // ============================================================
-// RATE LIMIT CONFIG cho từng route
-// ============================================================
-interface RateLimitConfig {
-    maxRequests: number;
-    windowMs: number;
-}
-
-const RATE_LIMITS: Record<string, RateLimitConfig> = {
-    // Auth routes: 5 requests/phút/IP
-    '/api/v1/auth/login': { maxRequests: 5, windowMs: 60_000 },
-    '/api/v1/auth/register': { maxRequests: 3, windowMs: 60_000 },
-    '/api/v1/auth/admin-login': { maxRequests: 3, windowMs: 60_000 },
-    '/api/v1/auth/change-password': { maxRequests: 3, windowMs: 60_000 },
-    // Purchase routes: 10 requests/phút/IP
-    '/api/v1/orders': { maxRequests: 10, windowMs: 60_000 },
-    '/api/v1/orders/purchase': { maxRequests: 10, windowMs: 60_000 },
-    // Wallet: 10 requests/phút/IP
-    '/api/v1/wallet': { maxRequests: 10, windowMs: 60_000 },
-};
-
-// Tổng rate limit: 100 requests/phút/IP cho mọi API
-const GLOBAL_RATE_LIMIT: RateLimitConfig = { maxRequests: 100, windowMs: 60_000 };
-
-// ============================================================
 // GET CLIENT IP
 // ============================================================
 function getClientIP(request: NextRequest): string {
@@ -133,35 +63,6 @@ function getClientIP(request: NextRequest): string {
 // ============================================================
 export function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
-    const ip = getClientIP(request);
-
-    // ---- Rate Limiting cho API routes ----
-    if (pathname.startsWith('/api/')) {
-        // Global rate limit
-        const globalKey = `global:${ip}`;
-        if (!checkRateLimit(globalKey, GLOBAL_RATE_LIMIT.maxRequests, GLOBAL_RATE_LIMIT.windowMs)) {
-            console.warn(`[RATE_LIMIT] Global limit exceeded: IP=${ip}, path=${pathname}`);
-            return NextResponse.json(
-                { success: false, message: 'Quá nhiều request. Vui lòng thử lại sau.', errorCode: 'RATE_LIMITED' },
-                { status: 429 }
-            );
-        }
-
-        // Route-specific rate limit
-        for (const [route, config] of Object.entries(RATE_LIMITS)) {
-            if (pathname.startsWith(route)) {
-                const routeKey = `route:${route}:${ip}`;
-                if (!checkRateLimit(routeKey, config.maxRequests, config.windowMs)) {
-                    console.warn(`[RATE_LIMIT] Route limit exceeded: IP=${ip}, path=${pathname}, limit=${config.maxRequests}/min`);
-                    return NextResponse.json(
-                        { success: false, message: 'Quá nhiều request. Vui lòng thử lại sau.', errorCode: 'RATE_LIMITED' },
-                        { status: 429 }
-                    );
-                }
-                break;
-            }
-        }
-    }
 
     // ---- Security Headers ----
     const response = NextResponse.next();

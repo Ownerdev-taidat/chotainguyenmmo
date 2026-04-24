@@ -105,39 +105,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, message: 'Vui lòng nhập đầy đủ thông tin ngân hàng' }, { status: 400 });
         }
 
-        // ── Rate Limit: max N withdrawals/day ──
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const todayCount = await prisma.withdrawal.count({
-            where: {
-                userId: authResult.userId,
-                createdAt: { gte: todayStart },
-            },
-        });
-        if (todayCount >= config.dailyLimit) {
-            return NextResponse.json({
-                success: false,
-                message: `Bạn đã rút ${config.dailyLimit} lần hôm nay. Vui lòng thử lại ngày mai.`,
-            }, { status: 429 });
-        }
-
-        // ── Cooldown: min N minutes between withdrawals ──
-        const lastWithdrawal = await prisma.withdrawal.findFirst({
-            where: { userId: authResult.userId },
-            orderBy: { createdAt: 'desc' },
-        });
-        if (lastWithdrawal) {
-            const diffMs = Date.now() - lastWithdrawal.createdAt.getTime();
-            const diffMinutes = diffMs / 60000;
-            if (diffMinutes < config.cooldownMinutes) {
-                const remaining = Math.ceil(config.cooldownMinutes - diffMinutes);
-                return NextResponse.json({
-                    success: false,
-                    message: `Vui lòng chờ ${remaining} phút nữa trước khi rút tiền tiếp.`,
-                }, { status: 429 });
-            }
-        }
-
         // ── Balance check ──
         const wallet = await prisma.wallet.findUnique({ where: { userId: authResult.userId } });
         if (!wallet || wallet.availableBalance < amount) {
