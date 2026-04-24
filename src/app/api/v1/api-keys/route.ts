@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { createApiKey, getApiKeysByUser, getOrCreateUserApiKey, revokeApiKey, CUSTOMER_PERMISSIONS, SELLER_PERMISSIONS } from '@/lib/api-keys';

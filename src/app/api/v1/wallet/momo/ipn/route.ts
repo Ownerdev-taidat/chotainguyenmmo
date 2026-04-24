@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyMoMoSignature } from '@/lib/momo';
 import prisma from '@/lib/prisma';

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getPlatformSettingsAsync, updatePlatformSettings } from '@/lib/mock-order-store';
 import prisma from '@/lib/prisma';

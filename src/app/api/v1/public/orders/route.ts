@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateApiKey } from '@/lib/api-keys';
 import prisma from '@/lib/prisma';

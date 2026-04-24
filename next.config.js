@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    // Force all pages/routes to be dynamic (no static pre-rendering at build time)
+    // This prevents build failures when DATABASE_URL is unavailable during build
+    output: 'standalone',
     images: {
         domains: ['localhost'],
         unoptimized: true,
