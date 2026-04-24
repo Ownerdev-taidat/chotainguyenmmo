@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
-import { randomBytes } from 'crypto';
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -27,22 +24,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, message: 'File quá lớn (tối đa 5MB)' }, { status: 400 });
         }
 
-        // Generate unique filename
-        const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-        const uniqueName = `${Date.now()}_${randomBytes(4).toString('hex')}.${ext}`;
-
-        // Ensure upload directory exists — use 'type' from form data or default to 'products'
-        const type = (formData.get('type') as string)?.replace(/[^a-zA-Z0-9-_]/g, '') || 'products';
-        const uploadDir = path.join(process.cwd(), 'public', 'uploads', type);
-        await mkdir(uploadDir, { recursive: true });
-
-        // Write file
+        // Convert to Base64 data URL — persists in DB, no filesystem dependency
         const buffer = Buffer.from(await file.arrayBuffer());
-        const filePath = path.join(uploadDir, uniqueName);
-        await writeFile(filePath, buffer);
+        const base64 = buffer.toString('base64');
+        const mimeType = file.type;
+        const dataUrl = `data:${mimeType};base64,${base64}`;
 
-        const url = `/uploads/${type}/${uniqueName}`;
-        return NextResponse.json({ success: true, url });
+        return NextResponse.json({ success: true, url: dataUrl });
     } catch (error) {
         console.error('[Upload] Error:', error);
         return NextResponse.json({ success: false, message: 'Lỗi upload file' }, { status: 500 });

@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import {
     LayoutDashboard, Package, Database, ShoppingBag, AlertTriangle,
-    TrendingUp, Wallet, Settings, LogOut, ChevronLeft, Bell, Store, Menu, X, FileSpreadsheet, Clock, Megaphone, MessageSquare, FileText, Globe
+    TrendingUp, Wallet, Settings, LogOut, ChevronLeft, Bell, Store, Menu, X, FileSpreadsheet, Clock, Megaphone, MessageSquare, FileText, Globe, Ticket
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { secureFetch } from '@/lib/secure-fetch';
@@ -14,12 +14,14 @@ import { secureFetch } from '@/lib/secure-fetch';
 const sellerMenuKeys = [
     { icon: LayoutDashboard, key: 'sellerOverview' as const, href: '/seller' },
     { icon: Package, key: 'sellerProducts' as const, href: '/seller/san-pham' },
+    { icon: Database, key: 'sellerInventory' as const, href: '/seller/ton-kho' },
     { icon: ShoppingBag, key: 'sellerOrders' as const, href: '/seller/don-hang' },
     { icon: MessageSquare, key: 'sellerMessages' as const, href: '/seller/tin-nhan' },
     { icon: AlertTriangle, key: 'sellerComplaints' as const, href: '/seller/khieu-nai' },
     { icon: TrendingUp, key: 'sellerRevenue' as const, href: '/seller/doanh-thu' },
     { icon: FileText, key: 'sellerInvoices' as const, href: '/seller/hoa-don' },
     { icon: Wallet, key: 'sellerWithdraw' as const, href: '/seller/rut-tien' },
+    { icon: Ticket, key: 'sellerVoucher' as const, href: '/seller/voucher' },
     { icon: Megaphone, key: 'sellerAds' as const, href: '/seller/quang-cao' },
     { icon: Settings, key: 'sellerSettings' as const, href: '/seller/cai-dat' },
 ];
@@ -114,7 +116,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
                         setUnreadCount(total);
                     }
                 })
-                .catch(() => {});
+                .catch(() => { });
         };
         fetchUnread();
         const interval = setInterval(fetchUnread, 5000);
@@ -157,7 +159,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
         secureFetch('/api/v1/seller/stats')
             .then(r => r.ok ? r.json() : null)
             .then(d => { if (d?.success) setSellerRevenue(d.data.revenueMonth || 0); })
-            .catch(() => {});
+            .catch(() => { });
     }, [sellerStatus]);
 
     // Loading state

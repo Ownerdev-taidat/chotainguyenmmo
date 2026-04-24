@@ -83,15 +83,23 @@ export async function POST(request: NextRequest) {
         if (!shop) return NextResponse.json({ success: false, message: 'Không tìm thấy shop' }, { status: 403 });
 
         const body = await request.json();
-        const { productId, items, sourceType, fileName } = body;
+        const { productId, variantId, items, sourceType, fileName } = body;
 
         if (!productId || !items || !Array.isArray(items) || items.length === 0) {
             return NextResponse.json({ success: false, message: 'Cần productId và danh sách items' }, { status: 400 });
         }
 
         // Verify ownership
-        const product = await prisma.product.findFirst({ where: { id: productId, shopId: shop.id } });
+        const product = await prisma.product.findFirst({
+            where: { id: productId, shopId: shop.id },
+            include: { variants: { select: { id: true } } },
+        });
         if (!product) return NextResponse.json({ success: false, message: 'Không tìm thấy sản phẩm' }, { status: 404 });
+
+        // Validate variantId if provided
+        if (variantId && !product.variants.some(v => v.id === variantId)) {
+            return NextResponse.json({ success: false, message: 'Variant không tồn tại' }, { status: 400 });
+        }
 
         // ── DUPLICATE CHECK ──
         const validLines = items.filter((line: string) => line.trim());
@@ -171,6 +179,7 @@ export async function POST(request: NextRequest) {
         await prisma.stockItem.createMany({
             data: cleanLines.map(item => ({
                 productId,
+                variantId: variantId || null,
                 rawContent: item.content,
                 contentHash: item.hash,
                 status: 'AVAILABLE' as const,

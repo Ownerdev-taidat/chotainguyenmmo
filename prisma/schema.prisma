@@ -40,6 +40,7 @@ model User {
   wallet             Wallet?
   withdrawals        Withdrawal[]
   invoices           Invoice[]
+  apiKeys            ApiKeyDb[]
 
   @@index([username])
   @@index([email])
@@ -124,6 +125,7 @@ model Shop {
   complaints            Complaint[] @relation("ShopComplaints")
   orders                Order[]     @relation("ShopOrders")
   products              Product[]
+  vouchers              Voucher[]
   owner                 User        @relation(fields: [ownerId], references: [id])
 
   @@index([slug])
@@ -137,6 +139,7 @@ model Category {
   slug         String     @unique
   icon         String?
   description  String?
+  feePercent   Float?     // Per-category platform fee %. null = use global default
   parentId     String?
   sortOrder    Int        @default(0)
   isActive     Boolean    @default(true)
@@ -192,6 +195,7 @@ model Product {
   images               ProductImage[]
   tags                 ProductTagMap[]
   variants             ProductVariant[]
+  vouchers             Voucher[]
   reviews              Review[]
   stockBatches         StockBatch[]
   stockItems           StockItem[]
@@ -237,6 +241,7 @@ model ProductTagMap {
 model StockItem {
   id                String          @id @default(cuid())
   productId         String
+  variantId         String?
   rawContent        String
   normalizedContent String?
   contentHash       String?         // SHA-256 hash of normalized content for duplicate detection
@@ -250,8 +255,10 @@ model StockItem {
   updatedAt         DateTime        @updatedAt
   batch             StockBatch?     @relation(fields: [batchId], references: [id])
   product           Product         @relation(fields: [productId], references: [id])
+  variant           ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   @@index([productId, status])
+  @@index([productId, variantId, status])
   @@index([orderId])
   @@index([batchId])
   @@index([contentHash])
@@ -596,16 +603,17 @@ model TermsAcceptance {
 }
 
 model ProductVariant {
-  id           String   @id @default(cuid())
+  id           String      @id @default(cuid())
   productId    String
   name         String
   price        Int
-  warrantyDays Int      @default(3)
-  sortOrder    Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warrantyDays Int         @default(3)
+  sortOrder    Int         @default(0)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stockItems   StockItem[]
 
   @@index([productId])
   @@index([isActive])
@@ -903,4 +911,48 @@ enum NotificationType {
   COMPLAINT
   REVIEW
   WITHDRAWAL
+}
+
+model Voucher {
+  id             String    @id @default(cuid())
+  shopId         String
+  code           String    @unique
+  discountType   String    @default("PERCENT") // PERCENT | FIXED
+  discountValue  Int       // % or flat VND amount
+  minOrderAmount Int?      // Minimum order to apply
+  maxDiscount    Int?      // Cap for PERCENT type
+  productId      String?   // null = all products in shop
+  usageLimit     Int       @default(100)
+  usedCount      Int       @default(0)
+  isActive       Boolean   @default(true)
+  startsAt       DateTime  @default(now())
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  shop           Shop      @relation(fields: [shopId], references: [id])
+  product        Product?  @relation(fields: [productId], references: [id])
+
+  @@index([shopId])
+  @@index([code])
+  @@index([productId])
+}
+
+model ApiKeyDb {
+  id         String    @id @default(cuid())
+  keyHash    String    @unique
+  keyPrefix  String    // First 12 chars for display
+  userId     String
+  label      String
+  type       String    @default("CUSTOMER") // SELLER | CUSTOMER
+  permissions String   // JSON array
+  isActive   Boolean   @default(true)
+  rateLimit  Int       @default(60)
+  usageCount Int       @default(0)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([keyHash])
 }

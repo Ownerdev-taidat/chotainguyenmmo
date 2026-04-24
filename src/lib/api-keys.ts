@@ -1,34 +1,24 @@
 /**
- * API Key Management System
+ * API Key Management System — Database-backed (Prisma)
  * Supports both Seller & Customer API keys
- * In-memory store (replace with database later)
  */
 
 import crypto from 'crypto';
+import prisma from '@/lib/prisma';
 
-export interface ApiKey {
+export interface ApiKeyResult {
     id: string;
-    key: string;           // The actual API key (shown once)
-    keyHash: string;       // SHA256 hash for lookup
+    keyPrefix: string;
     userId: string;
-    username: string;
-    label: string;         // User-defined label e.g. "My Bot", "Telegram Bot"
-    type: 'SELLER' | 'CUSTOMER';
-    permissions: string[]; // e.g. ['products:read', 'purchase', 'orders:read']
+    label: string;
+    type: string;
+    permissions: string[];
     isActive: boolean;
-    createdAt: string;
-    lastUsed?: string;
+    rateLimit: number;
     usageCount: number;
-    rateLimit: number;     // Requests per minute
-    // Google Sheets config (for sellers)
-    googleSheetUrl?: string;
-    googleSheetSyncEnabled?: boolean;
-    googleSheetLastSync?: string;
+    lastUsedAt: string | null;
+    createdAt: string;
 }
-
-// In-memory store — không có demo key mặc định (bảo mật)
-// TODO: Migrate sang database (Prisma) để persist qua restart
-let apiKeys: ApiKey[] = [];
 
 function hashKey(key: string): string {
     return crypto.createHash('sha256').update(key).digest('hex');
@@ -39,66 +29,137 @@ export function generateApiKey(prefix: string = 'ctn'): string {
     return `${prefix}_live_${random}`;
 }
 
-export function createApiKey(data: {
+export async function createApiKey(data: {
     userId: string;
-    username: string;
     label: string;
     type: 'SELLER' | 'CUSTOMER';
     permissions: string[];
-    googleSheetUrl?: string;
-}): { apiKey: ApiKey; rawKey: string } {
+}): Promise<{ apiKey: ApiKeyResult; rawKey: string }> {
     const rawKey = generateApiKey();
-    const apiKey: ApiKey = {
-        id: `apk_${Date.now()}`,
-        key: rawKey.substring(0, 12) + '****', // Masked for storage
-        keyHash: hashKey(rawKey),
-        userId: data.userId,
-        username: data.username,
-        label: data.label,
-        type: data.type,
-        permissions: data.permissions,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        usageCount: 0,
-        rateLimit: data.type === 'SELLER' ? 120 : 60,
-        googleSheetUrl: data.googleSheetUrl,
-        googleSheetSyncEnabled: !!data.googleSheetUrl,
+    const keyHash = hashKey(rawKey);
+    const keyPrefix = rawKey.substring(0, 12) + '****';
+
+    const record = await prisma.apiKeyDb.create({
+        data: {
+            keyHash,
+            keyPrefix,
+            userId: data.userId,
+            label: data.label,
+            type: data.type,
+            permissions: JSON.stringify(data.permissions),
+            isActive: true,
+            rateLimit: data.type === 'SELLER' ? 120 : 60,
+        },
+    });
+
+    return {
+        apiKey: {
+            id: record.id,
+            keyPrefix: record.keyPrefix,
+            userId: record.userId,
+            label: record.label,
+            type: record.type,
+            permissions: JSON.parse(record.permissions),
+            isActive: record.isActive,
+            rateLimit: record.rateLimit,
+            usageCount: record.usageCount,
+            lastUsedAt: record.lastUsedAt?.toISOString() || null,
+            createdAt: record.createdAt.toISOString(),
+        },
+        rawKey,
     };
-    apiKeys.push(apiKey);
-    return { apiKey, rawKey };
 }
 
-export function validateApiKey(rawKey: string): ApiKey | null {
+export async function validateApiKey(rawKey: string): Promise<{
+    userId: string;
+    type: string;
+    permissions: string[];
+    rateLimit: number;
+} | null> {
     const hash = hashKey(rawKey);
-    const found = apiKeys.find(k => k.keyHash === hash && k.isActive);
-    if (found) {
-        found.lastUsed = new Date().toISOString();
-        found.usageCount++;
-    }
-    return found || null;
+    const found = await prisma.apiKeyDb.findFirst({
+        where: { keyHash: hash, isActive: true },
+    });
+    if (!found) return null;
+
+    // Update usage stats (fire and forget)
+    prisma.apiKeyDb.update({
+        where: { id: found.id },
+        data: {
+            lastUsedAt: new Date(),
+            usageCount: { increment: 1 },
+        },
+    }).catch(() => { });
+
+    return {
+        userId: found.userId,
+        type: found.type,
+        permissions: JSON.parse(found.permissions),
+        rateLimit: found.rateLimit,
+    };
 }
 
-export function getApiKeysByUser(userId: string): ApiKey[] {
-    return apiKeys.filter(k => k.userId === userId);
+export async function getApiKeysByUser(userId: string): Promise<ApiKeyResult[]> {
+    const keys = await prisma.apiKeyDb.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+    });
+    return keys.map(k => ({
+        id: k.id,
+        keyPrefix: k.keyPrefix,
+        userId: k.userId,
+        label: k.label,
+        type: k.type,
+        permissions: JSON.parse(k.permissions),
+        isActive: k.isActive,
+        rateLimit: k.rateLimit,
+        usageCount: k.usageCount,
+        lastUsedAt: k.lastUsedAt?.toISOString() || null,
+        createdAt: k.createdAt.toISOString(),
+    }));
 }
 
-export function revokeApiKey(keyId: string, userId: string): boolean {
-    const key = apiKeys.find(k => k.id === keyId && k.userId === userId);
-    if (key) {
-        key.isActive = false;
-        return true;
+export async function getOrCreateUserApiKey(userId: string): Promise<{ apiKey: ApiKeyResult; rawKey?: string }> {
+    const existing = await prisma.apiKeyDb.findFirst({
+        where: { userId, isActive: true, type: 'CUSTOMER' },
+        orderBy: { createdAt: 'desc' },
+    });
+    if (existing) {
+        return {
+            apiKey: {
+                id: existing.id,
+                keyPrefix: existing.keyPrefix,
+                userId: existing.userId,
+                label: existing.label,
+                type: existing.type,
+                permissions: JSON.parse(existing.permissions),
+                isActive: existing.isActive,
+                rateLimit: existing.rateLimit,
+                usageCount: existing.usageCount,
+                lastUsedAt: existing.lastUsedAt?.toISOString() || null,
+                createdAt: existing.createdAt.toISOString(),
+            },
+        };
     }
-    return false;
+    // Auto-create
+    return createApiKey({
+        userId,
+        label: 'Auto-generated',
+        type: 'CUSTOMER',
+        permissions: ['products:read', 'purchase', 'orders:read', 'balance:read'],
+    });
 }
 
-export function updateApiKeyGoogleSheet(keyId: string, userId: string, sheetUrl: string, syncEnabled: boolean): boolean {
-    const key = apiKeys.find(k => k.id === keyId && k.userId === userId);
-    if (key) {
-        key.googleSheetUrl = sheetUrl;
-        key.googleSheetSyncEnabled = syncEnabled;
-        return true;
-    }
-    return false;
+export async function revokeApiKey(keyId: string, userId: string): Promise<boolean> {
+    const key = await prisma.apiKeyDb.findFirst({
+        where: { id: keyId, userId },
+    });
+    if (!key) return false;
+    await prisma.apiKeyDb.update({
+        where: { id: keyId },
+        data: { isActive: false },
+    });
+    return true;
 }
 
 // Permission definitions
@@ -115,6 +176,4 @@ export const SELLER_PERMISSIONS = [
     { id: 'stock:read', label: 'Xem tồn kho', description: 'Xem số lượng tồn kho' },
     { id: 'stock:write', label: 'Quản lý tồn kho', description: 'Thêm/xóa stock từ kho' },
     { id: 'orders:manage', label: 'Quản lý đơn hàng', description: 'Xử lý đơn hàng của shop' },
-    { id: 'sheets:sync', label: 'Google Sheets Sync', description: 'Đồng bộ tồn kho từ Google Sheets' },
-    { id: 'webhook', label: 'Webhook', description: 'Nhận thông báo đơn hàng mới' },
 ];

@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     if (authResult instanceof NextResponse) return authResult;
 
     try {
-        const { productId, quantity = 1 } = await request.json();
+        const { productId, variantId, quantity = 1, voucherCode } = await request.json();
 
         if (!productId || quantity < 1) {
             return NextResponse.json(
@@ -18,10 +18,10 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Get product
+        // Get product with category (for per-category fee)
         const product = await prisma.product.findUnique({
             where: { id: productId },
-            include: { shop: true },
+            include: { shop: true, category: { select: { feePercent: true } } },
         });
 
         if (!product || product.status !== 'ACTIVE') {
@@ -38,8 +38,71 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const totalAmount = product.price * quantity;
-        const commissionRate = getPlatformSettings().commissionRate;
+        // Determine unit price (variant price or product price)
+        let unitPrice = product.price;
+        if (variantId) {
+            const variant = await prisma.productVariant.findFirst({ where: { id: variantId, productId } });
+            if (variant) unitPrice = variant.price;
+        }
+
+        let subtotal = unitPrice * quantity;
+        let discountAmount = 0;
+        let appliedVoucherId: string | null = null;
+
+        // ── VOUCHER VALIDATION ──
+        if (voucherCode) {
+            const voucher = await prisma.voucher.findFirst({
+                where: {
+                    code: voucherCode.toUpperCase().trim(),
+                    shopId: product.shopId,
+                    isActive: true,
+                },
+            });
+
+            if (!voucher) {
+                return NextResponse.json({ success: false, message: 'Mã giảm giá không hợp lệ hoặc không áp dụng cho sản phẩm này', errorCode: 'INVALID_VOUCHER' }, { status: 400 });
+            }
+
+            // Check expiry
+            if (voucher.expiresAt && new Date(voucher.expiresAt) < new Date()) {
+                return NextResponse.json({ success: false, message: 'Mã giảm giá đã hết hạn', errorCode: 'VOUCHER_EXPIRED' }, { status: 400 });
+            }
+
+            // Check usage limit
+            if (voucher.usedCount >= voucher.usageLimit) {
+                return NextResponse.json({ success: false, message: 'Mã giảm giá đã hết lượt sử dụng', errorCode: 'VOUCHER_EXHAUSTED' }, { status: 400 });
+            }
+
+            // Check product scope
+            if (voucher.productId && voucher.productId !== productId) {
+                return NextResponse.json({ success: false, message: 'Mã giảm giá không áp dụng cho sản phẩm này', errorCode: 'VOUCHER_WRONG_PRODUCT' }, { status: 400 });
+            }
+
+            // Check min order
+            if (voucher.minOrderAmount && subtotal < voucher.minOrderAmount) {
+                return NextResponse.json({ success: false, message: `Đơn hàng tối thiểu ${voucher.minOrderAmount.toLocaleString()}đ để dùng mã này`, errorCode: 'VOUCHER_MIN_ORDER' }, { status: 400 });
+            }
+
+            // Calculate discount
+            if (voucher.discountType === 'PERCENT') {
+                discountAmount = Math.floor(subtotal * voucher.discountValue / 100);
+                if (voucher.maxDiscount && discountAmount > voucher.maxDiscount) {
+                    discountAmount = voucher.maxDiscount;
+                }
+            } else {
+                discountAmount = voucher.discountValue;
+            }
+
+            // Don't let discount exceed subtotal
+            if (discountAmount > subtotal) discountAmount = subtotal;
+            appliedVoucherId = voucher.id;
+        }
+
+        const totalAmount = subtotal - discountAmount;
+
+        // Per-category fee or global platform fee
+        const globalRate = getPlatformSettings().commissionRate;
+        const commissionRate = product.category.feePercent ?? globalRate;
         const feeAmount = Math.floor(totalAmount * commissionRate / 100);
 
         // Transaction: check balance, check stock, create order, deduct wallet, reserve stock
@@ -51,8 +114,10 @@ export async function POST(request: NextRequest) {
             }
 
             // 2. Check available stock
+            const stockWhere: Record<string, unknown> = { productId, status: 'AVAILABLE' };
+            if (variantId) stockWhere.variantId = variantId;
             const availableStock = await tx.stockItem.findMany({
-                where: { productId, status: 'AVAILABLE' },
+                where: stockWhere,
                 take: quantity,
             });
 
@@ -68,7 +133,8 @@ export async function POST(request: NextRequest) {
                     buyerId: authResult.userId,
                     shopId: product.shopId,
                     status: 'PAID',
-                    subtotal: totalAmount,
+                    subtotal,
+                    discountAmount,
                     feeAmount,
                     totalAmount,
                     paymentStatus: 'PAID',
@@ -80,14 +146,22 @@ export async function POST(request: NextRequest) {
                         create: {
                             productId,
                             quantity,
-                            unitPrice: product.price,
-                            total: totalAmount,
+                            unitPrice,
+                            total: subtotal,
                         },
                     },
                 },
             });
 
-            // 4. Deduct buyer wallet
+            // 4. Increment voucher usage
+            if (appliedVoucherId) {
+                await tx.voucher.update({
+                    where: { id: appliedVoucherId },
+                    data: { usedCount: { increment: 1 } },
+                });
+            }
+
+            // 5. Deduct buyer wallet
             await tx.wallet.update({
                 where: { userId: authResult.userId },
                 data: {
@@ -96,7 +170,7 @@ export async function POST(request: NextRequest) {
                 },
             });
 
-            // 5. Record wallet transaction (buyer)
+            // 6. Record wallet transaction (buyer)
             await tx.walletTransaction.create({
                 data: {
                     walletId: wallet.id,
@@ -106,11 +180,11 @@ export async function POST(request: NextRequest) {
                     balanceAfter: wallet.availableBalance - totalAmount,
                     referenceType: 'order',
                     referenceId: order.id,
-                    description: `Mua ${product.name} x${quantity}`,
+                    description: `Mua ${product.name} x${quantity}${discountAmount > 0 ? ` (giảm ${discountAmount.toLocaleString()}đ)` : ''}`,
                 },
             });
 
-            // 6. Credit seller wallet (ALL orders go to heldBalance — 7-day hold for scam prevention)
+            // 7. Credit seller wallet (held for 7 days)
             const sellerEarning = totalAmount - feeAmount;
             const sellerWallet = await tx.wallet.findUnique({ where: { userId: product.shop.ownerId } });
             if (sellerWallet) {
@@ -133,7 +207,7 @@ export async function POST(request: NextRequest) {
                 });
             }
 
-            // 6b. Credit platform commission to admin wallet
+            // 7b. Credit platform commission to admin wallet
             try {
                 const adminUser = await tx.user.findFirst({
                     where: { role: { in: ['SUPER_ADMIN', 'ADMIN'] } },
@@ -166,14 +240,14 @@ export async function POST(request: NextRequest) {
                 console.error('Credit platform fee error:', e);
             }
 
-            // 7. Mark stock as sold & create delivery
+            // 8. Mark stock as sold & create delivery
             const stockIds = availableStock.map(s => s.id);
             await tx.stockItem.updateMany({
                 where: { id: { in: stockIds } },
                 data: { status: 'SOLD', soldAt: new Date(), orderId: order.id },
             });
 
-            // 8. Create delivery with stock content
+            // 9. Create delivery with stock content
             if (product.deliveryType === 'AUTO') {
                 const deliveryContent = availableStock.map(s => s.rawContent).join('\n');
                 await tx.delivery.create({
@@ -185,7 +259,7 @@ export async function POST(request: NextRequest) {
                 });
             }
 
-            // 9. Update product counts
+            // 10. Update product counts
             await tx.product.update({
                 where: { id: productId },
                 data: {
@@ -199,8 +273,8 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            message: 'Đơn hàng đã được tạo thành công',
-            data: { orderId: result.id, orderCode: result.orderCode },
+            message: `Đơn hàng đã được tạo thành công${discountAmount > 0 ? ` (giảm ${discountAmount.toLocaleString()}đ)` : ''}`,
+            data: { orderId: result.id, orderCode: result.orderCode, discountAmount },
         }, { status: 201 });
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : '';

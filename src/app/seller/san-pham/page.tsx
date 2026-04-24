@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useI18n } from '@/lib/i18n';
 import { formatCurrency } from '@/lib/utils';
-import { Plus, Search, Edit, Trash2, Eye, Package, X, Save, Loader2, CheckCircle2, Shield, Upload, ImagePlus, Link, Database } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Eye, Package, X, Save, Loader2, CheckCircle2, Shield, Upload, ImagePlus, Link, Database, Percent } from 'lucide-react';
 
 interface Variant {
     id: string;
@@ -35,6 +35,7 @@ interface Category {
     id: string;
     name: string;
     slug: string;
+    feePercent: number | null;
 }
 
 type ModalType = 'view' | 'edit' | 'add' | null;
@@ -316,9 +317,8 @@ export default function SellerProductsPage() {
                                 <div className="flex items-center gap-2">
                                     {imageTab === 'upload' ? (
                                         <label
-                                            className={`flex items-center justify-center gap-2 flex-1 h-10 border border-dashed rounded-lg cursor-pointer transition-all text-xs ${
-                                                uploading ? 'border-brand-primary/50 bg-brand-primary/5' : 'border-brand-border hover:border-brand-primary/40 hover:bg-brand-surface-2/50'
-                                            }`}
+                                            className={`flex items-center justify-center gap-2 flex-1 h-10 border border-dashed rounded-lg cursor-pointer transition-all text-xs ${uploading ? 'border-brand-primary/50 bg-brand-primary/5' : 'border-brand-border hover:border-brand-primary/40 hover:bg-brand-surface-2/50'
+                                                }`}
                                             onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
                                             onDrop={async e => {
                                                 e.preventDefault(); e.stopPropagation();
@@ -377,8 +377,20 @@ export default function SellerProductsPage() {
                                     <label className="text-[10px] text-brand-text-muted">{t('spCategory')}</label>
                                     <select value={formData.categoryId} onChange={e => setFormData(prev => ({ ...prev, categoryId: e.target.value }))} className="input-field w-full !py-1.5 text-sm">
                                         <option value="">{t('spSelectCategory')}</option>
-                                        {categories.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                        {categories.map(c => (<option key={c.id} value={c.id}>{c.name}{c.feePercent !== null && c.feePercent !== undefined ? ` (Phí ${c.feePercent}%)` : ''}</option>))}
                                     </select>
+                                    {formData.categoryId && (() => {
+                                        const selectedCat = categories.find(c => c.id === formData.categoryId);
+                                        if (!selectedCat) return null;
+                                        return (
+                                            <div className="mt-1 flex items-center gap-1">
+                                                <Percent className="w-3 h-3 text-brand-warning" />
+                                                <span className="text-[10px] text-brand-warning font-medium">
+                                                    Phí sàn: {selectedCat.feePercent !== null && selectedCat.feePercent !== undefined ? `${selectedCat.feePercent}%` : 'Mặc định hệ thống'}
+                                                </span>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                                 <div>
                                     <label className="text-[10px] text-brand-text-muted">{t('spDelivery')}</label>
@@ -439,16 +451,11 @@ export default function SellerProductsPage() {
                                                 )}
                                             </div>
                                         </div>
-                                        <div>
-                                            <label className="text-[10px] text-brand-text-muted flex items-center gap-1"><Database className="w-3 h-3" /> {t('spStockLabel')}</label>
-                                            <textarea value={v.stockItems} onChange={e => {
-                                                const variants = [...formData.variants];
-                                                variants[i] = { ...variants[i], stockItems: e.target.value };
-                                                setFormData(prev => ({ ...prev, variants }));
-                                            }} className="input-field w-full resize-none !py-1.5 text-xs font-mono" rows={3} placeholder={'VD:\nuser1@gmail.com|pass123\nuser2@gmail.com|pass456'} />
-                                            {v.stockItems.trim() && (
-                                                <p className="text-[10px] text-brand-info mt-0.5">📦 {v.stockItems.trim().split('\n').filter(Boolean).length} {modal === 'edit' ? 'mục trong kho (trùng sẽ tự loại)' : t('spStockCount')}</p>
-                                            )}
+                                        <div className="bg-brand-info/5 border border-brand-info/20 rounded-lg px-3 py-2 flex items-center gap-2">
+                                            <Database className="w-3.5 h-3.5 text-brand-info shrink-0" />
+                                            <p className="text-[10px] text-brand-text-secondary">
+                                                📦 Quản lý tồn kho tại tab <a href="/seller/ton-kho" className="text-brand-primary font-semibold hover:underline">Kho hàng</a> — Hỗ trợ upload file .txt/.csv/.xlsx và paste trực tiếp.
+                                            </p>
                                         </div>
                                     </div>
                                 ))}

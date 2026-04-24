@@ -1,113 +1,100 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createApiKey, getApiKeysByUser, revokeApiKey, updateApiKeyGoogleSheet, CUSTOMER_PERMISSIONS, SELLER_PERMISSIONS } from '@/lib/api-keys';
+import { requireAuth } from '@/lib/auth';
+import { createApiKey, getApiKeysByUser, getOrCreateUserApiKey, revokeApiKey, CUSTOMER_PERMISSIONS, SELLER_PERMISSIONS } from '@/lib/api-keys';
 
-// GET: List API keys for current user
+/**
+ * API Keys Management — Database-backed
+ * GET    — List user's API keys
+ * POST   — Create new key
+ * DELETE — Revoke key
+ */
+
 export async function GET(req: NextRequest) {
-    // Get user from auth header (simplified — use JWT in production)
-    const userId = req.headers.get('x-user-id') || '';
-    const username = req.headers.get('x-username') || '';
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
 
-    if (!userId) {
-        // Try cookie/localStorage fallback for browser requests
-        const authHeader = req.headers.get('authorization');
-        if (!authHeader) {
-            return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    try {
+        const keys = await getApiKeysByUser(authResult.userId);
+        const isAutoCreate = new URL(req.url).searchParams.get('auto') === '1';
+
+        // Auto-create a key if requested and none exist
+        if (isAutoCreate && keys.length === 0) {
+            const { apiKey, rawKey } = await getOrCreateUserApiKey(authResult.userId);
+            return NextResponse.json({
+                success: true,
+                data: [apiKey],
+                newKey: rawKey, // Only returned on first auto-creation
+                permissionOptions: { CUSTOMER: CUSTOMER_PERMISSIONS, SELLER: SELLER_PERMISSIONS },
+            });
         }
-    }
 
-    const keys = getApiKeysByUser(userId);
-    return NextResponse.json({
-        success: true,
-        data: keys.map(k => ({
-            id: k.id,
-            key: k.key, // Already masked
-            label: k.label,
-            type: k.type,
-            permissions: k.permissions,
-            isActive: k.isActive,
-            createdAt: k.createdAt,
-            lastUsed: k.lastUsed,
-            usageCount: k.usageCount,
-            rateLimit: k.rateLimit,
-            googleSheetUrl: k.googleSheetUrl,
-            googleSheetSyncEnabled: k.googleSheetSyncEnabled,
-            googleSheetLastSync: k.googleSheetLastSync,
-        })),
-        permissionOptions: {
-            CUSTOMER: CUSTOMER_PERMISSIONS,
-            SELLER: SELLER_PERMISSIONS,
-        },
-    });
+        return NextResponse.json({
+            success: true,
+            data: keys,
+            permissionOptions: { CUSTOMER: CUSTOMER_PERMISSIONS, SELLER: SELLER_PERMISSIONS },
+        });
+    } catch (error) {
+        console.error('[API Keys] GET error:', error);
+        return NextResponse.json({ success: false, message: 'Lỗi hệ thống' }, { status: 500 });
+    }
 }
 
-// POST: Create new API key
 export async function POST(req: NextRequest) {
-    const body = await req.json();
-    const { userId, username, label, type, permissions, googleSheetUrl } = body;
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
 
-    if (!userId || !label || !type) {
-        return NextResponse.json({ success: false, message: 'Missing required fields' }, { status: 400 });
+    try {
+        const body = await req.json();
+        const { label, type, permissions } = body;
+
+        if (!label || !type) {
+            return NextResponse.json({ success: false, message: 'Cần label và type' }, { status: 400 });
+        }
+
+        const validPerms = type === 'SELLER'
+            ? SELLER_PERMISSIONS.map(p => p.id)
+            : CUSTOMER_PERMISSIONS.map(p => p.id);
+
+        const filteredPerms = (permissions || validPerms).filter((p: string) => validPerms.includes(p));
+
+        const { apiKey, rawKey } = await createApiKey({
+            userId: authResult.userId,
+            label,
+            type,
+            permissions: filteredPerms,
+        });
+
+        return NextResponse.json({
+            success: true,
+            message: 'API Key đã được tạo thành công',
+            data: { ...apiKey, key: rawKey },
+            warning: '⚠️ Lưu API Key này ngay! Bạn sẽ không thể xem lại key đầy đủ sau khi đóng trang này.',
+        }, { status: 201 });
+    } catch (error) {
+        console.error('[API Keys] POST error:', error);
+        return NextResponse.json({ success: false, message: 'Lỗi tạo API Key' }, { status: 500 });
     }
-
-    const validPerms = type === 'SELLER'
-        ? SELLER_PERMISSIONS.map(p => p.id)
-        : CUSTOMER_PERMISSIONS.map(p => p.id);
-
-    const filteredPerms = (permissions || validPerms).filter((p: string) => validPerms.includes(p));
-
-    const { apiKey, rawKey } = createApiKey({
-        userId,
-        username: username || '',
-        label,
-        type,
-        permissions: filteredPerms,
-        googleSheetUrl,
-    });
-
-    return NextResponse.json({
-        success: true,
-        message: 'API Key đã được tạo thành công',
-        data: {
-            id: apiKey.id,
-            key: rawKey, // Show full key ONCE — user must save it
-            label: apiKey.label,
-            type: apiKey.type,
-            permissions: apiKey.permissions,
-            rateLimit: apiKey.rateLimit,
-        },
-        warning: '⚠️ Lưu API Key này ngay! Bạn sẽ không thể xem lại key đầy đủ sau khi đóng trang này.',
-    }, { status: 201 });
 }
 
-// DELETE: Revoke API key
 export async function DELETE(req: NextRequest) {
-    const { searchParams } = new URL(req.url);
-    const keyId = searchParams.get('id');
-    const userId = searchParams.get('userId');
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
 
-    if (!keyId || !userId) {
-        return NextResponse.json({ success: false, message: 'Missing key ID or user ID' }, { status: 400 });
+    try {
+        const { searchParams } = new URL(req.url);
+        const keyId = searchParams.get('id');
+
+        if (!keyId) {
+            return NextResponse.json({ success: false, message: 'Missing key ID' }, { status: 400 });
+        }
+
+        const result = await revokeApiKey(keyId, authResult.userId);
+        if (result) {
+            return NextResponse.json({ success: true, message: 'API Key đã bị thu hồi' });
+        }
+        return NextResponse.json({ success: false, message: 'Không tìm thấy API Key' }, { status: 404 });
+    } catch (error) {
+        console.error('[API Keys] DELETE error:', error);
+        return NextResponse.json({ success: false, message: 'Lỗi thu hồi' }, { status: 500 });
     }
-
-    const result = revokeApiKey(keyId, userId);
-    if (result) {
-        return NextResponse.json({ success: true, message: 'API Key đã bị thu hồi' });
-    }
-    return NextResponse.json({ success: false, message: 'Không tìm thấy API Key' }, { status: 404 });
-}
-
-// PUT: Update API key (Google Sheets config)
-export async function PUT(req: NextRequest) {
-    const body = await req.json();
-    const { keyId, userId, googleSheetUrl, googleSheetSyncEnabled } = body;
-
-    if (!keyId || !userId) {
-        return NextResponse.json({ success: false, message: 'Missing key ID or user ID' }, { status: 400 });
-    }
-
-    const result = updateApiKeyGoogleSheet(keyId, userId, googleSheetUrl || '', googleSheetSyncEnabled ?? false);
-    if (result) {
-        return NextResponse.json({ success: true, message: 'Cập nhật thành công' });
-    }
-    return NextResponse.json({ success: false, message: 'Không tìm thấy API Key' }, { status: 404 });
 }

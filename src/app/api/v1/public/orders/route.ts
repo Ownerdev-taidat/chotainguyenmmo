@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'API Key required' }, { status: 401 });
     }
 
-    const keyData = validateApiKey(apiKey);
+    const keyData = await validateApiKey(apiKey);
     if (!keyData) {
         return NextResponse.json({ success: false, message: 'Invalid or revoked API Key' }, { status: 403 });
     }
@@ -32,7 +32,6 @@ export async function GET(req: NextRequest) {
                 data: {
                     balance: wallet?.availableBalance || 0,
                     currency: 'VND',
-                    username: keyData.username,
                 },
             });
         }

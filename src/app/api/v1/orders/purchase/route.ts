@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, message: 'Vui lòng đăng nhập' }, { status: 401 });
         }
 
-        const { productId, variantId, quantity = 1 } = await request.json();
+        const { productId, variantId, quantity = 1, voucherCode } = await request.json();
 
         if (!productId) {
             return NextResponse.json({ success: false, message: 'Thiếu thông tin sản phẩm' }, { status: 400 });
@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
             include: {
                 shop: { select: { id: true, name: true, ownerId: true, status: true } },
                 variants: { where: { isActive: true } },
+                category: { select: { feePercent: true } },
             },
         });
 
@@ -52,8 +53,47 @@ export async function POST(request: NextRequest) {
             selectedVariantName = product.variants[0].name;
         }
 
-        const totalAmount = unitPrice * quantity;
-        const commissionRate = getPlatformSettings().commissionRate;
+        let subtotal = unitPrice * quantity;
+        let discountAmount = 0;
+        let appliedVoucherId: string | null = null;
+
+        // ── VOUCHER VALIDATION ──
+        if (voucherCode) {
+            const voucher = await prisma.voucher.findFirst({
+                where: {
+                    code: voucherCode.toUpperCase().trim(),
+                    shopId: product.shop.id,
+                    isActive: true,
+                },
+            });
+            if (!voucher) {
+                return NextResponse.json({ success: false, message: 'Mã giảm giá không hợp lệ' }, { status: 400 });
+            }
+            if (voucher.expiresAt && new Date(voucher.expiresAt) < new Date()) {
+                return NextResponse.json({ success: false, message: 'Mã giảm giá đã hết hạn' }, { status: 400 });
+            }
+            if (voucher.usedCount >= voucher.usageLimit) {
+                return NextResponse.json({ success: false, message: 'Mã giảm giá đã hết lượt sử dụng' }, { status: 400 });
+            }
+            if (voucher.productId && voucher.productId !== productId) {
+                return NextResponse.json({ success: false, message: 'Mã giảm giá không áp dụng cho sản phẩm này' }, { status: 400 });
+            }
+            if (voucher.minOrderAmount && subtotal < voucher.minOrderAmount) {
+                return NextResponse.json({ success: false, message: `Đơn hàng tối thiểu ${voucher.minOrderAmount.toLocaleString()}đ` }, { status: 400 });
+            }
+            if (voucher.discountType === 'PERCENT') {
+                discountAmount = Math.floor(subtotal * voucher.discountValue / 100);
+                if (voucher.maxDiscount && discountAmount > voucher.maxDiscount) discountAmount = voucher.maxDiscount;
+            } else {
+                discountAmount = voucher.discountValue;
+            }
+            if (discountAmount > subtotal) discountAmount = subtotal;
+            appliedVoucherId = voucher.id;
+        }
+
+        const totalAmount = subtotal - discountAmount;
+        const globalRate = getPlatformSettings().commissionRate;
+        const commissionRate = product.category?.feePercent ?? globalRate;
         const feeAmount = Math.floor(totalAmount * commissionRate / 100);
         const sellerEarning = totalAmount - feeAmount;
         const orderCode = generateOrderCode();
@@ -108,7 +148,8 @@ export async function POST(request: NextRequest) {
                     buyerId: user.userId,
                     shopId: product.shop.id,
                     status: isAutoDelivery ? 'COMPLETED' : 'PROCESSING',
-                    subtotal: totalAmount,
+                    subtotal,
+                    discountAmount,
                     feeAmount,
                     totalAmount,
                     paymentStatus: 'PAID',
@@ -133,6 +174,14 @@ export async function POST(request: NextRequest) {
                     description: `Mua ${quantity}x ${product.name}${selectedVariantName ? ` (${selectedVariantName})` : ''}`,
                 },
             });
+
+            // 3b. Increment voucher usage
+            if (appliedVoucherId) {
+                await tx.voucher.update({
+                    where: { id: appliedVoucherId },
+                    data: { usedCount: { increment: 1 } },
+                });
+            }
 
             // 4. Credit seller + log (parallel)
             if (sellerWallet) {

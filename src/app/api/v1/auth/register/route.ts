@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { signToken, hashPassword } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { getOrCreateUserApiKey } from '@/lib/api-keys';
 
 export async function POST(request: NextRequest) {
     try {
@@ -72,6 +73,13 @@ export async function POST(request: NextRequest) {
         await prisma.wallet.create({
             data: { userId: user.id },
         });
+
+        // Auto-generate API key for new user
+        try {
+            await getOrCreateUserApiKey(user.id);
+        } catch (e) {
+            console.error('Auto API key generation failed:', e);
+        }
 
         // Generate JWT
         const token = await signToken({

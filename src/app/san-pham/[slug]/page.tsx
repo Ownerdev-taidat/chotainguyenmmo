@@ -56,6 +56,14 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     const [isFavorited, setIsFavorited] = useState(false);
     const [favLoading, setFavLoading] = useState(false);
 
+    // Voucher states
+    const [voucherCode, setVoucherCode] = useState('');
+    const [voucherApplying, setVoucherApplying] = useState(false);
+    const [voucherResult, setVoucherResult] = useState<{ valid: boolean; discount: number; message: string } | null>(null);
+
+    // API key state
+    const [userApiKey, setUserApiKey] = useState<string | null>(null);
+
     // Review states
     const [reviews, setReviews] = useState<{ id: string; rating: number; comment: string | null; userName: string; userAvatar: string | null; createdAt: string }[]>([]);
     const [reviewStats, setReviewStats] = useState<{ avgRating: number; totalReviews: number }>({ avgRating: 0, totalReviews: 0 });
@@ -63,6 +71,25 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     const [reviewForm, setReviewForm] = useState<{ orderId: string; rating: number; comment: string }>({ orderId: '', rating: 5, comment: '' });
     const [reviewSubmitting, setReviewSubmitting] = useState(false);
     const [reviewMsg, setReviewMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // Fetch user API key
+    useEffect(() => {
+        if (!user) return;
+        (async () => {
+            try {
+                const token = localStorage.getItem('token') || '';
+                const res = await fetch('/api/v1/api-keys?auto=1', {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json();
+                if (data.newKey) {
+                    setUserApiKey(data.newKey);
+                } else if (data.success && data.data?.length > 0) {
+                    setUserApiKey(data.data[0].keyPrefix + '...');
+                }
+            } catch { }
+        })();
+    }, [user]);
 
     useEffect(() => {
         (async () => {
@@ -83,7 +110,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                             if (favData.success) {
                                 setIsFavorited(favData.data.some((f: any) => f.productId === data.data.id));
                             }
-                        } catch {}
+                        } catch { }
                     }
                 } else {
                     setError(data.message || t('pdpNotFound'));
@@ -110,7 +137,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
             if (data.success) {
                 setIsFavorited(data.favorited);
             }
-        } catch {}
+        } catch { }
         setFavLoading(false);
     };
 
@@ -124,7 +151,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                 setReviewStats({ avgRating: data.data.avgRating, totalReviews: data.data.totalReviews });
                 return data.data.myReviewedOrderIds || [];
             }
-        } catch {}
+        } catch { }
         return [];
     };
 
@@ -149,7 +176,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                 );
                 setReviewableOrders(eligible.map((o: any) => ({ id: o.id, orderCode: o.orderCode, createdAt: o.createdAt })));
             }
-        } catch {}
+        } catch { }
     };
 
     useEffect(() => {
@@ -199,6 +226,34 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
         setShowConfirm(true);
     };
 
+    const handleApplyVoucher = async () => {
+        if (!voucherCode.trim() || !product) return;
+        setVoucherApplying(true);
+        setVoucherResult(null);
+        try {
+            const res = await fetch(`/api/v1/vouchers/validate?code=${encodeURIComponent(voucherCode.trim())}&shopId=${product.shop.ownerId}&productId=${product.id}`);
+            const data = await res.json();
+            if (data.success && data.data) {
+                const v = data.data;
+                let discount = 0;
+                const subtotal = currentPrice * quantity;
+                if (v.discountType === 'PERCENT') {
+                    discount = Math.floor(subtotal * v.discountValue / 100);
+                    if (v.maxDiscount && discount > v.maxDiscount) discount = v.maxDiscount;
+                } else {
+                    discount = v.discountValue;
+                }
+                if (discount > subtotal) discount = subtotal;
+                setVoucherResult({ valid: true, discount, message: `Giảm ${discount.toLocaleString()}đ` });
+            } else {
+                setVoucherResult({ valid: false, discount: 0, message: data.message || 'Mã không hợp lệ' });
+            }
+        } catch {
+            setVoucherResult({ valid: false, discount: 0, message: 'Lỗi kiểm tra mã' });
+        }
+        setVoucherApplying(false);
+    };
+
     const handleConfirmPurchase = async () => {
         setPurchasing(true);
         try {
@@ -206,10 +261,17 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
             const res = await fetch('/api/v1/orders/purchase', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ productId: product?.id, variantId: selectedVariant, quantity }),
+                body: JSON.stringify({
+                    productId: product?.id,
+                    variantId: selectedVariant,
+                    quantity,
+                    voucherCode: voucherResult?.valid ? voucherCode.trim() : undefined,
+                }),
             });
             const data = await res.json();
             setShowConfirm(false);
+            setVoucherCode('');
+            setVoucherResult(null);
             if (data.success && data.data) {
                 updateUser({ walletBalance: data.data.newBalance });
                 setPurchaseResult({ success: true, message: data.message, order: data.data.order, newBalance: data.data.newBalance });
@@ -497,7 +559,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                                     {user && reviewableOrders.length > 0 && (
                                         <div className="bg-brand-surface-2 rounded-xl p-4 border border-brand-border">
                                             <h4 className="text-sm font-semibold text-brand-text-primary mb-3">✍️ Viết đánh giá</h4>
-                                            
+
                                             <div className="mb-3">
                                                 <label className="text-xs text-brand-text-muted block mb-1">Chọn đơn hàng</label>
                                                 <select
@@ -600,7 +662,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                     </div>
 
                     {/* Seller Info */}
-                    <div className="card mb-12">
+                    <div className="card mb-6">
                         <div className="flex items-center gap-4">
                             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-primary/20 to-brand-secondary/20 flex items-center justify-center border border-brand-border overflow-hidden">
                                 {product.shop.logoUrl ? (
@@ -622,6 +684,99 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                             <Link href={`/shop/${product.shop.slug}`} className="btn-secondary !px-4 !py-2 text-sm flex items-center gap-1.5">
                                 <Store className="w-4 h-4" /> {t('pdpViewShop')}
                             </Link>
+                        </div>
+                    </div>
+
+                    {/* API Integration Section — Redesigned */}
+                    <div className="card mb-12 border-2 border-indigo-500/30 bg-gradient-to-br from-indigo-500/5 to-purple-500/5">
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
+                                <Zap className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-brand-text-primary">⚡ API Integration</h3>
+                                <p className="text-xs text-brand-text-secondary">Tích hợp sản phẩm này vào website/app của bạn — Copy & dùng ngay!</p>
+                            </div>
+                        </div>
+
+                        {/* API Key Display */}
+                        {user && userApiKey && (
+                            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Shield className="w-4 h-4 text-emerald-500" />
+                                    <div>
+                                        <span className="text-xs font-semibold text-emerald-600">API Key của bạn:</span>
+                                        <code className="ml-2 text-xs font-mono text-brand-text-primary bg-white/50 px-2 py-0.5 rounded">{userApiKey}</code>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => { navigator.clipboard.writeText(userApiKey); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                                    className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                                >
+                                    <Copy className="w-3.5 h-3.5" />
+                                    {copied ? 'Đã copy!' : 'Copy'}
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="space-y-4">
+                            {/* GET — View Product */}
+                            <div className="bg-white/60 dark:bg-brand-surface-2 rounded-xl p-4 border border-brand-border">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500 text-white font-bold tracking-wider">GET</span>
+                                    <span className="text-xs font-semibold text-brand-text-primary">Xem thông tin sản phẩm</span>
+                                </div>
+                                <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-green-400 overflow-x-auto">
+                                    <div className="text-gray-400 mb-1"># Xem sản phẩm</div>
+                                    <div>curl -X GET \</div>
+                                    <div className="ml-4">&quot;{typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/public/products?slug=<span className="text-yellow-300">{product.slug}</span>&quot; \</div>
+                                    <div className="ml-4">-H &quot;x-api-key: <span className="text-cyan-300">{userApiKey || 'YOUR_API_KEY'}</span>&quot;</div>
+                                </div>
+                                <button
+                                    onClick={() => navigator.clipboard.writeText(`curl -X GET "${window.location.origin}/api/v1/public/products?slug=${product.slug}" -H "x-api-key: ${userApiKey || 'YOUR_API_KEY'}"`)}
+                                    className="mt-2 flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-600 font-medium"
+                                >
+                                    <Copy className="w-3 h-3" /> Copy lệnh curl
+                                </button>
+                            </div>
+
+                            {/* POST — Purchase */}
+                            <div className="bg-white/60 dark:bg-brand-surface-2 rounded-xl p-4 border border-brand-border">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-500 text-white font-bold tracking-wider">POST</span>
+                                    <span className="text-xs font-semibold text-brand-text-primary">Mua hàng qua API</span>
+                                </div>
+                                <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-green-400 overflow-x-auto">
+                                    <div className="text-gray-400 mb-1"># Mua sản phẩm</div>
+                                    <div>curl -X POST \</div>
+                                    <div className="ml-4">&quot;{typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/public/products&quot; \</div>
+                                    <div className="ml-4">-H &quot;Content-Type: application/json&quot; \</div>
+                                    <div className="ml-4">-H &quot;x-api-key: <span className="text-cyan-300">{userApiKey || 'YOUR_API_KEY'}</span>&quot; \</div>
+                                    <div className="ml-4">-d &apos;{'{'}&quot;productSlug&quot;:&quot;<span className="text-yellow-300">{product.slug}</span>&quot;,&quot;quantity&quot;:<span className="text-purple-300">1</span>{'}'}\&apos;</div>
+                                </div>
+                                <button
+                                    onClick={() => navigator.clipboard.writeText(`curl -X POST "${window.location.origin}/api/v1/public/products" -H "Content-Type: application/json" -H "x-api-key: ${userApiKey || 'YOUR_API_KEY'}" -d '{"productSlug":"${product.slug}","quantity":1}'`)}
+                                    className="mt-2 flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-600 font-medium"
+                                >
+                                    <Copy className="w-3 h-3" /> Copy lệnh curl
+                                </button>
+                            </div>
+
+                            {/* Auth info */}
+                            {!user && (
+                                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex items-center gap-2">
+                                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                                    <p className="text-xs text-brand-text-secondary">
+                                        <Link href="/dang-nhap" className="text-brand-primary hover:underline font-semibold">Đăng nhập</Link> để nhận API Key miễn phí và sử dụng API ngay!
+                                    </p>
+                                </div>
+                            )}
+                            {user && (
+                                <div className="flex items-center gap-2 text-[10px] text-brand-text-muted">
+                                    <ExternalLink className="w-3 h-3" />
+                                    <span>Quản lý API Keys tại <Link href="/dashboard/api-keys" className="text-indigo-500 hover:underline font-medium">Dashboard → API Keys</Link> • <Link href="/api-docs" className="text-indigo-500 hover:underline font-medium">Xem tài liệu API</Link></span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -665,6 +820,40 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                                 <span className="text-sm font-semibold text-brand-text-primary">{t('purchaseTotal')}</span>
                                 <span className="text-lg font-bold text-brand-primary">{formatCurrency(currentPrice * quantity)}</span>
                             </div>
+                        </div>
+
+                        {/* Voucher Input */}
+                        <div className="mb-4">
+                            <label className="text-xs font-semibold text-brand-text-secondary mb-1.5 block">🎫 Mã giảm giá (nếu có)</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={voucherCode}
+                                    onChange={e => { setVoucherCode(e.target.value.toUpperCase()); setVoucherResult(null); }}
+                                    placeholder="Nhập mã voucher..."
+                                    className="input-field flex-1 !py-2 text-sm font-mono uppercase"
+                                    disabled={purchasing}
+                                />
+                                <button
+                                    onClick={handleApplyVoucher}
+                                    disabled={!voucherCode.trim() || voucherApplying || purchasing}
+                                    className="btn-secondary !py-2 !px-4 text-xs font-semibold disabled:opacity-50"
+                                >
+                                    {voucherApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Áp dụng'}
+                                </button>
+                            </div>
+                            {voucherResult && (
+                                <div className={`mt-1.5 text-xs font-medium flex items-center gap-1 ${voucherResult.valid ? 'text-emerald-500' : 'text-red-500'}`}>
+                                    {voucherResult.valid ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                                    {voucherResult.message}
+                                </div>
+                            )}
+                            {voucherResult?.valid && (
+                                <div className="mt-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 flex justify-between items-center">
+                                    <span className="text-xs text-emerald-600 font-medium">Thanh toán sau giảm:</span>
+                                    <span className="text-sm font-bold text-emerald-600">{formatCurrency(Math.max(0, currentPrice * quantity - voucherResult.discount))}</span>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex items-center justify-between text-sm mb-5 bg-brand-success/5 border border-brand-success/10 rounded-xl px-4 py-2.5">
